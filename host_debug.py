@@ -24,14 +24,14 @@ for line in fh:
 
 
 if len(queue) == 0:
-    print "Nothing to send"
+    print("Nothing to send")
     sys.exit(1)
 
 for msg in queue:
     time.sleep(0.05)
-    print 'sending:', msg
+    print('sending:'), msg
     s.send(msg)
     resp = s.recv(1024)
     if resp != '':
-        print 'resp:', resp
+        print('resp:'), resp
 

@@ -42,24 +42,24 @@ for line in fh:
     
 
 if len(queue) == 0:
-    print "Nothing to send"
+    print("Nothing to send")
     sys.exit(1)
 
 hmi = None
 def consume(*args):
     if len(queue) == 0:
-        print "Queue empty"
+        print("Queue empty")
         tornado.ioloop.IOLoop.instance().stop()
     action, msg = queue.pop(0)
     if action == SEND:
-        print 'sending %s' % msg
+        print('sending %s' % msg)
         hmi.send(msg, consume)
     elif action == ASK:
-        print msg
+        print(msg)
 
 def reply(*args):
     if len(queue) == 0:
-        print "Queue empty"
+        print("Queue empty")
         tornado.ioloop.IOLoop.instance().stop()
     hmi.send(queue.pop(0)[1])
     consume()
@@ -69,7 +69,7 @@ Protocol.register_cmd_callback("pedalboards", reply)
 Protocol.register_cmd_callback("pedalboard", reply)
 
 def start():
-    print "pinging"
+    print("pinging")
     hmi.ping(consume)
 
 #hmi = HMI(HMI_SERIAL_PORT, HMI_BAUD_RATE, ping)

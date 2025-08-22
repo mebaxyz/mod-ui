@@ -20,11 +20,11 @@ def connect(mac):
             return True
         sys.stdout.write('.')
         sys.stdout.flush()
-    print "Can't connect"
+    print("Can't connect")
     return False
 
 def get_mac():
-    print "Looking for MOD..."
+    print("Looking for MOD...")
     proc = subprocess.Popen(['sudo', 'hcitool', 'scan'],
                             stdout=subprocess.PIPE)
     proc.wait()
@@ -40,8 +40,8 @@ def get_mac():
         return result[0][0]
 
     for i, pair in enumerate(result):
-        print "%d.\t%s\t%s" % (i, pair[0], pair[1])
-    print "\nChoose: "
+        print("%d.\t%s\t%s") % (i, pair[0], pair[1])
+    print("\nChoose: ")
     return result[int(sys.stdin.readline().strip())][0]
 
 def configure():
