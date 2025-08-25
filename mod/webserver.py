@@ -2172,7 +2172,7 @@ class TokensSave(JsonRequestHandler):
 
         self.write(True)
 
-class FilesList(JsonRequestHandler):
+'''class FilesList(JsonRequestHandler):
     complete_audiofile_exts = (
         # through libsndfile
         ".aif", ".aifc", ".aiff", ".au", ".bwf", ".flac", ".htk", ".iff", ".mat4", ".mat5", ".oga", ".ogg", ".opus",
@@ -2262,24 +2262,46 @@ class FilesList(JsonRequestHandler):
             'ok': True,
             'files': tuple(retfiles[fn] for fn in fullnames),
         })
+'''
 
 settings = {'log_function': lambda handler: None} if not LOG else {}
 
 application = web.Application(
         EffectInstaller.urls('effect/install') +
         [
+
+            # System 
             (r"/system/info", SystemInfo),
             (r"/system/prefs", SystemPreferences),
             (r"/system/exechange", SystemExeChange),
             (r"/system/cleanup", SystemCleanup),
+            (r"/update/download/", UpdateDownload),             # Migration Admin Gov
+            (r"/update/begin", UpdateBegin),                    # Migration Admin Gov
+            (r"/package/uninstall", PackageUninstall),
+            (r"/truebypass/(Left|Right)/(true|false)", TrueBypass),         # Migration : Admin Function
+            (r"/set_buffersize/(128|256)", SetBufferSize),                  # Migration : Admin Function
+            (r"/reset_xruns/", ResetXruns),                                 # Migration : Admin Function
+            (r"/switch_cpu_freq/", SwitchCpuFreq),                          # Migration : Admin Function
 
-            (r"/update/download/", UpdateDownload),
-            (r"/update/begin", UpdateBegin),
 
-            (r"/controlchain/download/", ControlChainDownload),
-            (r"/controlchain/cancel/", ControlChainCancel),
+            # HOST Api
+            # plugin parameters
+            (r"/effect/parameter/set/?", EffectParameterSet),
+            (r"/effect/parameter/address/*(/[A-Za-z0-9_:/]+[^/])/?", EffectParameterAddress),
+            # plugin presets
+            (r"/effect/preset/load/*(/[A-Za-z0-9_/]+[^/])/?", EffectPresetLoad),
+            (r"/effect/preset/save_new/*(/[A-Za-z0-9_/]+[^/])/?", EffectPresetSaveNew),
+            (r"/effect/preset/save_replace/*(/[A-Za-z0-9_/]+[^/])/?", EffectPresetSaveReplace),
+            (r"/effect/preset/delete/*(/[A-Za-z0-9_/]+[^/])/?", EffectPresetDelete),
 
-            (r"/resources/(.*)", EffectResource),
+            # connections
+            (r"/effect/connect/*(/[A-Za-z0-9_/]+[^/]),([A-Za-z0-9_/]+[^/])/?", EffectConnect),
+            (r"/effect/disconnect/*(/[A-Za-z0-9_/]+[^/]),([A-Za-z0-9_/]+[^/])/?", EffectDisconnect),
+
+            # plugin resources
+            # File access
+            (r"/effect/image/(screenshot|thumbnail).png", EffectImage),
+            (r"/effect/file/(.*)", EffectFile),
 
             # plugin management
             (r"/effect/add/*(/[A-Za-z0-9_/]+[^/])/?", EffectAdd),
@@ -2289,25 +2311,16 @@ application = web.Application(
             (r"/effect/bulk/?", EffectBulk),
             (r"/effect/list", EffectList),
 
-            # plugin parameters
-            (r"/effect/parameter/address/*(/[A-Za-z0-9_:/]+[^/])/?", EffectParameterAddress),
-            (r"/effect/parameter/set/?", EffectParameterSet),
 
-            # plugin presets
-            (r"/effect/preset/load/*(/[A-Za-z0-9_/]+[^/])/?", EffectPresetLoad),
-            (r"/effect/preset/save_new/*(/[A-Za-z0-9_/]+[^/])/?", EffectPresetSaveNew),
-            (r"/effect/preset/save_replace/*(/[A-Za-z0-9_/]+[^/])/?", EffectPresetSaveReplace),
-            (r"/effect/preset/delete/*(/[A-Za-z0-9_/]+[^/])/?", EffectPresetDelete),
 
-            # plugin resources
-            (r"/effect/image/(screenshot|thumbnail).png", EffectImage),
-            (r"/effect/file/(.*)", EffectFile),
+            # File Access
+            (r"/controlchain/download/", ControlChainDownload),
+            (r"/controlchain/cancel/", ControlChainCancel),
+            
+            #(r"/files/list/?", FilesList),
 
-            # connections
-            (r"/effect/connect/*(/[A-Za-z0-9_/]+[^/]),([A-Za-z0-9_/]+[^/])/?", EffectConnect),
-            (r"/effect/disconnect/*(/[A-Za-z0-9_/]+[^/]),([A-Za-z0-9_/]+[^/])/?", EffectDisconnect),
+            (r"/resources/(.*)", EffectResource),
 
-            (r"/package/uninstall", PackageUninstall),
 
             # pedalboard stuff
             (r"/pedalboard/list", PedalboardList),
@@ -2353,8 +2366,7 @@ application = web.Application(
             (r"/tokens/get", TokensGet),
             (r"/tokens/save/?", TokensSave),
 
-            # file listing etc
-            (r"/files/list/?", FilesList),
+           
 
             (r"/reset/?", DashboardClean),
 
@@ -2372,10 +2384,8 @@ application = web.Application(
             (r"/ping/?", Ping),
             (r"/hello/?", Hello),
 
-            (r"/truebypass/(Left|Right)/(true|false)", TrueBypass),
-            (r"/set_buffersize/(128|256)", SetBufferSize),
-            (r"/reset_xruns/", ResetXruns),
-            (r"/switch_cpu_freq/", SwitchCpuFreq),
+            
+
 
             (r"/save_user_id/", SaveUserId),
 
