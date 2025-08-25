@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import time
+import asyncio
 
 from base64 import b64decode, b64encode
 from datetime import timedelta
@@ -1902,28 +1903,30 @@ class BulkTemplateLoader(TimelessRequestHandler):
         self.set_header("Cache-Control", "public, max-age=31536000")
         self.set_header("Expires", "Mon, 31 Dec 2035 12:00:00 gmt")
 
+
 class Ping(JsonRequestHandler):
-    @web.asynchronous
-    @gen.engine
-    def get(self):
-        start = end = time.time()
+    async def get(self):
+        start = time.time()
 
         try:
-            online = yield gen.with_timeout(timedelta(seconds=5),
-                                            gen.Task(SESSION.web_ping))
-        except gen.TimeoutError:
-            online = True
+            # asyncio.wait_for replaces gen.with_timeout
+            online = await asyncio.wait_for(
+                SESSION.web_ping(),  # must be an async function
+                timeout=5
+            )
+        except asyncio.TimeoutError:
+            online = True  # keep your original fallback logic
 
         if online:
             end = time.time()
             resp = {
-                'ihm_online': online,
-                'ihm_time'  : int((end - start) * 1000) or 1,
+                'ihm_online': True,
+                'ihm_time': int((end - start) * 1000) or 1,
             }
         else:
             resp = {
                 'ihm_online': False,
-                'ihm_time'  : 0,
+                'ihm_time': 0,
             }
 
         self.write(resp)

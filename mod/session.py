@@ -217,13 +217,14 @@ class Session(object):
     def web_set_midi_devices(self, newDevs, midiAggregatedMode, midiLoopback):
         return self.host.set_midi_devices(newDevs, midiAggregatedMode, midiLoopback)
 
-    # Send a ping to HMI and Websockets
-    def web_ping(self, callback):
-        if self.hmi.initialized:
-            self.hmi.ping(callback)
-        else:
-            callback(False)
+    async def web_ping(self):
         self.msg_callback("ping")
+
+        if self.hmi.initialized:
+            # Assuming hmi.ping is also async now
+            return await self.hmi.ping()
+        else:
+            return False
 
     def web_cv_addressing_plugin_port_add(self, uri, name):
         return self.host.cv_addressing_plugin_port_add(uri, name)
