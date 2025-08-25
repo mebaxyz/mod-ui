@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2012-2023 MOD Audio UG
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+const FILE_API_URL = ''
+
 var loadedIcons = {}
 var loadedSettings = {}
 var loadedCSSs = {}
@@ -40,7 +42,7 @@ function loadFileTypesList(parameter, dummy, callback) {
         return
     }
     $.ajax({
-        url: '/files/list',
+        url: `${FILE_API_URL}/files/list`,
         data: {
             'types': parameter.fileTypes.join(","),
         },
