@@ -14,6 +14,12 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Install LV2 plugins for development/testing
+RUN apt-get update && apt-get install -y \
+    lv2-examples \
+    swh-lv2 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Set working directory
 WORKDIR /app
 

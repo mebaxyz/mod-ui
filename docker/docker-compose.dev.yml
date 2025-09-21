@@ -22,6 +22,7 @@ services:
       - MOD_LOG_LEVEL=DEBUG
       - MOD_DATA_DIR=/data
       - MOD_DEVICE_WEBSERVER_PORT=8888
+      - MOD_HTML_DIR=/app/html
     depends_on:
       - mod-session
     networks:
@@ -41,7 +42,7 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ../html:/app/html
+      - ../html:/usr/share/nginx/html:ro
     depends_on:
       - mod-api
     networks:

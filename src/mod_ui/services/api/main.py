@@ -5,6 +5,7 @@ Modern FastAPI-based implementation of the MOD UI web interface.
 This replaces the legacy Tornado-based webserver with a modern async framework.
 """
 
+import html
 import json
 import logging
 import os
@@ -34,6 +35,25 @@ IMAGE_VERSION = os.environ.get("MOD_VERSION", "1.0.0")
 # Configure logging first
 logging.basicConfig(level=(logging.DEBUG if LOG else logging.WARNING))
 logger = logging.getLogger(__name__)
+
+
+# Local implementation of mod_squeeze to avoid Tornado import issues
+def mod_squeeze(content: str) -> str:
+    """
+    Escape content for JavaScript string literals
+    This replaces the original mod_squeeze function from webserver.py
+    """
+    # Replace backslashes first to avoid double escaping
+    content = content.replace("\\", "\\\\")
+    # Escape single quotes for JavaScript strings
+    content = content.replace("'", "\\'")
+    # Replace newlines with \\n for JavaScript
+    content = content.replace("\n", "\\n")
+    content = content.replace("\r", "\\r")
+    # Replace tabs
+    content = content.replace("\t", "\\t")
+    return content
+
 
 # Import MOD utilities step by step
 MOD_UTILS_AVAILABLE = False
@@ -80,8 +100,11 @@ if not MOD_UTILS_AVAILABLE:
         return default_type()
 
     def lv2_init():
-        """Placeholder for LV2 initialization"""
-        pass
+        """Initialize LV2 plugin system"""
+        from modtools.utils import init
+
+        init()
+        logger.info("LV2 plugin system initialized")
 
     def get_plugin_list():
         """Placeholder for plugin list"""
@@ -135,7 +158,15 @@ templates = Jinja2Templates(directory=HTML_DIR)
 
 # Mount static files for CSS, JS, images, etc. at root level
 app.mount("/css", StaticFiles(directory=os.path.join(HTML_DIR, "css")), name="css")
-app.mount("/js", StaticFiles(directory=os.path.join(HTML_DIR, "js")), name="js")
+# Mount JS library and utility files (templates.js is handled separately)
+app.mount(
+    "/js/lib", StaticFiles(directory=os.path.join(HTML_DIR, "js", "lib")), name="js_lib"
+)
+app.mount(
+    "/js/utils",
+    StaticFiles(directory=os.path.join(HTML_DIR, "js", "utils")),
+    name="js_utils",
+)
 app.mount("/img", StaticFiles(directory=os.path.join(HTML_DIR, "img")), name="img")
 app.mount(
     "/fonts", StaticFiles(directory=os.path.join(HTML_DIR, "fonts")), name="fonts"
@@ -145,6 +176,8 @@ app.mount(
     StaticFiles(directory=os.path.join(HTML_DIR, "resources")),
     name="resources",
 )
+
+# Dynamic templates will be handled by the /js/templates.js endpoint defined later
 
 # Keep the /static mount as fallback for any other static files
 app.mount("/static", StaticFiles(directory=HTML_DIR), name="static")
@@ -287,33 +320,66 @@ async def shutdown_event():
 def get_template_context_index():
     """Generate template context for index page matching original TemplateHandler.index()"""
     try:
-        # Import MOD utilities
+        # Import ALL MOD settings and utilities
         from mod import get_hardware_descriptor
+        from mod.settings import (
+            API_KEY,
+            CLOUD_HTTP_ADDRESS,
+            CLOUD_LABS_HTTP_ADDRESS,
+            CONTROLCHAIN_HTTP_ADDRESS,
+            DEFAULT_ICON_TEMPLATE,
+            DEFAULT_PEDALBOARD,
+            DEFAULT_SETTINGS_TEMPLATE,
+            DESKTOP,
+            DEV_API,
+            DEV_ENVIRONMENT,
+            DEV_HMI,
+            DEV_HOST,
+            DEVICE_KEY,
+            DEVICE_TAG,
+            DEVICE_UID,
+            FAVORITES_JSON_FILE,
+            IMAGE_VERSION,
+            LV2_PLUGIN_DIR,
+            PEDALBOARDS_HTTP_ADDRESS,
+            PEDALBOARDS_LABS_HTTP_ADDRESS,
+            PLUGINS_HTTP_ADDRESS,
+            PREFERENCES_JSON_FILE,
+            UNTITLED_PEDALBOARD_NAME,
+            USER_ID_JSON_FILE,
+        )
         from modtools.utils import get_jack_buffer_size, get_jack_sample_rate
 
         # Get hardware descriptor
         hwdesc = get_hardware_descriptor()
-        
+
         # Read default templates
         default_icon_template = ""
         default_settings_template = ""
         try:
-            from mod.settings import (
-                DEFAULT_ICON_TEMPLATE,
-                DEFAULT_PEDALBOARD,
-                DEFAULT_SETTINGS_TEMPLATE,
-            )
-            with open(DEFAULT_ICON_TEMPLATE, 'r') as fh:
+            with open(DEFAULT_ICON_TEMPLATE, "r") as fh:
                 content = fh.read()
-                # Properly escape for JavaScript string literals
-                default_icon_template = content.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r")
-            with open(DEFAULT_SETTINGS_TEMPLATE, 'r') as fh:
+                # Properly escape for JavaScript string literals and apply mod_squeeze
+                default_icon_template = (
+                    mod_squeeze(content)
+                    .replace("\\", "\\\\")
+                    .replace("'", "\\'")
+                    .replace("\n", "\\n")
+                    .replace("\r", "\\r")
+                )
+            with open(DEFAULT_SETTINGS_TEMPLATE, "r") as fh:
                 content = fh.read()
-                # Properly escape for JavaScript string literals
-                default_settings_template = content.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r")
+                # Properly escape for JavaScript string literals and apply mod_squeeze
+                default_settings_template = (
+                    mod_squeeze(content)
+                    .replace("\\", "\\\\")
+                    .replace("'", "\\'")
+                    .replace("\n", "\\n")
+                    .replace("\r", "\\r")
+                )
         except:
             logger.warning("Could not load default templates")
-            
+
         # Load real MOD data
         import base64
         import json
@@ -324,76 +390,108 @@ def get_template_context_index():
             favorites = safe_json_load(FAVORITES_JSON_FILE, list)
         except:
             pass
-            
-        # Load preferences 
+
+        # Load preferences
         preferences = {}
         try:
             from mod.settings import PREFERENCES_JSON_FILE
+
             preferences = safe_json_load(PREFERENCES_JSON_FILE, dict)
         except:
             pass
-            
+
         # Load user ID
         user_name = ""
         user_email = ""
         try:
             from mod.settings import USER_ID_JSON_FILE
+
             user_id = safe_json_load(USER_ID_JSON_FILE, dict)
             user_name = user_id.get("name", "")
             user_email = user_id.get("email", "")
         except:
             pass
-            
+
         # Get pedalboard info (placeholder for SESSION integration)
-        pbname = ""
-        fullpbname = "Untitled"
-        
-        # Get hardware profile 
+        pbname = ""  # TODO: SESSION.host.pedalboard_name
+        prname = ""  # TODO: SESSION.host.snapshot_name()
+        fullpbname = pbname or UNTITLED_PEDALBOARD_NAME
+        if prname:
+            fullpbname += " - " + prname
+
+        # Get hardware profile
         hardware_profile = "e30="  # base64 encoded empty dict
         try:
             # TODO: Integrate with SESSION.get_hardware_actuators()
-            hardware_profile = base64.b64encode(json.dumps({}).encode("utf-8")).decode("utf-8") 
+            hardware_profile = base64.b64encode(json.dumps({}).encode("utf-8")).decode(
+                "utf-8"
+            )
         except:
             pass
-        
-        # Build context matching original
+
+        # Get version string (matches original get_version logic)
+        version_arg = "1"
+        if IMAGE_VERSION is not None and len(IMAGE_VERSION) > 1:
+            # strip initial 'v' from version if present
+            version_arg = (
+                IMAGE_VERSION[1:] if IMAGE_VERSION[0] == "v" else IMAGE_VERSION
+            )
+        else:
+            import time
+
+            version_arg = str(int(time.time()))
+
+        # Build context matching original exactly
         context = {
-            'default_icon_template': default_icon_template,
-            'default_settings_template': default_settings_template,
-            'default_pedalboard': "",
-            'cloud_url': "https://cloud.moddevices.com",
-            'cloud_labs_url': "https://cloud.moddevices.com/labs",
-            'plugins_url': "https://cloud.moddevices.com/plugins",
-            'pedalboards_url': "https://cloud.moddevices.com/pedalboards",
-            'pedalboards_labs_url': "https://cloud.moddevices.com/labs/pedalboards",
-            'controlchain_url': "https://wiki.moddevices.com/wiki/Control_Chain",
-            'hardware_profile': hardware_profile,
-            'version': IMAGE_VERSION or "1.0.0",
-            'bin_compat': hwdesc.get('bin-compat', "x86_64"),
-            'codec_truebypass': 'true' if hwdesc.get('codec_truebypass', False) else 'false',
-            'factory_pedalboards': hwdesc.get('factory_pedalboards', False),
-            'platform': hwdesc.get('platform', "linux"),
-            'addressing_pages': int(hwdesc.get('addressing_pages', 0)),
-            'lv2_plugin_dir': "/app/lv2",
-            'bundlepath': "",
-            'title': user_name.replace("\\", "\\\\").replace("'", "\\'") if user_name else pbname,
-            'size': "[]",
-            'fulltitle': fullpbname,
-            'titleblend': 'blend' if not pbname else '',
-            'dev_api_class': '',
-            'using_desktop': 'false',
-            'using_mod': 'true',
-            'user_name': user_name.replace("\\", "\\\\").replace("'", "\\'"),
-            'user_email': user_email.replace("\\", "\\\\").replace("'", "\\'"),
-            'favorites': json.dumps(favorites),
-            'preferences': json.dumps(preferences),
-            'bufferSize': str(get_jack_buffer_size()),
-            'sampleRate': str(int(get_jack_sample_rate())),
+            "default_icon_template": default_icon_template,
+            "default_settings_template": default_settings_template,
+            "default_pedalboard": (
+                mod_squeeze(DEFAULT_PEDALBOARD) if DEFAULT_PEDALBOARD else ""
+            ),
+            "cloud_url": CLOUD_HTTP_ADDRESS,
+            "cloud_labs_url": CLOUD_LABS_HTTP_ADDRESS,
+            "plugins_url": PLUGINS_HTTP_ADDRESS,
+            "pedalboards_url": PEDALBOARDS_HTTP_ADDRESS,
+            "pedalboards_labs_url": PEDALBOARDS_LABS_HTTP_ADDRESS,
+            "controlchain_url": CONTROLCHAIN_HTTP_ADDRESS,
+            "hardware_profile": hardware_profile,
+            "version": version_arg,
+            "bin_compat": hwdesc.get("bin-compat", "Unknown"),
+            "codec_truebypass": (
+                "true" if hwdesc.get("codec_truebypass", False) else "false"
+            ),
+            "factory_pedalboards": hwdesc.get("factory_pedalboards", False),
+            "platform": hwdesc.get("platform", "Unknown"),
+            "addressing_pages": int(hwdesc.get("addressing_pages", 0)),
+            "lv2_plugin_dir": mod_squeeze(LV2_PLUGIN_DIR),
+            "bundlepath": "",  # TODO: mod_squeeze(SESSION.host.pedalboard_path)
+            "title": mod_squeeze(user_name) if user_name else mod_squeeze(pbname),
+            "size": "[]",  # TODO: json.dumps(SESSION.host.pedalboard_size)
+            "fulltitle": html.escape(fullpbname),
+            "titleblend": (
+                "" if pbname else "blend"
+            ),  # TODO: '' if SESSION.host.pedalboard_name else 'blend'
+            "dev_api_class": "dev_api" if DEV_API else "",
+            "using_desktop": "true" if DESKTOP else "false",
+            "using_mod": (
+                "true"
+                if DEVICE_KEY and hwdesc.get("platform", None) is not None
+                else "false"
+            ),
+            "user_name": mod_squeeze(user_name),
+            "user_email": mod_squeeze(user_email),
+            "favorites": json.dumps(favorites),  # TODO: json.dumps(gState.favorites)
+            "preferences": json.dumps(
+                preferences
+            ),  # TODO: json.dumps(SESSION.prefs.prefs)
+            "bufferSize": get_jack_buffer_size(),
+            "sampleRate": get_jack_sample_rate(),
         }
         return context
     except Exception as e:
         logger.error(f"Error generating index template context: {e}")
         return {}
+
 
 def apply_template_context(content: str, context: dict) -> str:
     """Apply template context to content, replacing {{variables}} and removing Tornado syntax"""
@@ -401,94 +499,138 @@ def apply_template_context(content: str, context: dict) -> str:
     for key, value in context.items():
         placeholder = f"{{{{{key}}}}}"
         content = content.replace(placeholder, str(value))
-    
+
     # Remove Tornado template syntax
     content = content.replace("{% autoescape None %}", "")
     content = content.replace("{% end %}", "")
-    content = content.replace("{% if using_desktop == 'true' or using_mod == 'true' %}", "")
+    content = content.replace(
+        "{% if using_desktop == 'true' or using_mod == 'true' %}", ""
+    )
     content = content.replace("{% if using_desktop == 'true' %}", "")
     content = content.replace("{% else %}", "")
     content = content.replace("{% endif %}", "")
     content = content.replace("{% if factory_pedalboards %}", "")
-    
+
     return content
+
 
 def get_template_context_pedalboard(bundlepath: str = ""):
     """Generate template context for pedalboard page matching original TemplateHandler.pedalboard()"""
     try:
-        # Import MOD utilities  
+        # Import MOD utilities with ALL settings
         from mod.settings import DEFAULT_ICON_TEMPLATE, DEFAULT_SETTINGS_TEMPLATE
 
-        # Read default templates
+        # Read default templates (matching original exactly)
         default_icon_template = ""
         default_settings_template = ""
         try:
-            with open(DEFAULT_ICON_TEMPLATE, 'r') as fh:
+            with open(DEFAULT_ICON_TEMPLATE, "r") as fh:
                 content = fh.read()
-                # Properly escape for JavaScript string literals
-                default_icon_template = content.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r")
-            with open(DEFAULT_SETTINGS_TEMPLATE, 'r') as fh:
+                # Apply mod_squeeze first, then escape for JavaScript
+                default_icon_template = (
+                    mod_squeeze(content)
+                    .replace("\\", "\\\\")
+                    .replace("'", "\\'")
+                    .replace("\n", "\\n")
+                    .replace("\r", "\\r")
+                )
+            with open(DEFAULT_SETTINGS_TEMPLATE, "r") as fh:
                 content = fh.read()
-                # Properly escape for JavaScript string literals
-                default_settings_template = content.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r")
+                # Apply mod_squeeze first, then escape for JavaScript
+                default_settings_template = (
+                    mod_squeeze(content)
+                    .replace("\\", "\\\\")
+                    .replace("'", "\\'")
+                    .replace("\n", "\\n")
+                    .replace("\r", "\\r")
+                )
         except:
             logger.warning("Could not load default templates")
-        
+
         # Get pedalboard info (placeholder for now)
         import base64
         import json
+
         pedalboard = {
-            'height': 0,
-            'width': 0, 
-            'title': "",
-            'connections': [],
-            'plugins': [],
-            'hardware': {},
+            "height": 0,
+            "width": 0,
+            "title": "",
+            "connections": [],
+            "plugins": [],
+            "hardware": {},
         }
-        
+
         context = {
-            'default_icon_template': default_icon_template,
-            'default_settings_template': default_settings_template,
-            'pedalboard': base64.b64encode(json.dumps(pedalboard).encode("utf-8")).decode("utf-8")
+            "default_icon_template": default_icon_template,
+            "default_settings_template": default_settings_template,
+            "pedalboard": base64.b64encode(
+                json.dumps(pedalboard).encode("utf-8")
+            ).decode("utf-8"),
         }
         return context
     except Exception as e:
         logger.error(f"Error generating pedalboard template context: {e}")
         return {}
 
+
 def get_template_context_settings():
     """Generate template context for settings page matching original TemplateHandler.settings()"""
     try:
-        # Import MOD utilities
+        # Import ALL MOD settings and utilities
         import json
 
+        # Using global mod_squeeze function
         from mod import get_hardware_descriptor
+        from mod.settings import (
+            DESKTOP,
+            DEV_API,
+            DEVICE_KEY,
+            IMAGE_VERSION,
+            PREFERENCES_JSON_FILE,
+            USER_ID_JSON_FILE,
+        )
         from modtools.utils import get_jack_buffer_size, get_jack_sample_rate
+
+        # Define mod_squeeze locally (from original webserver.py)
+        def mod_squeeze(text):
+            return squeeze(text.replace("\\", "\\\\").replace("'", "\\'"))
+
+        # Using html.escape instead of xhtml_escape
 
         # Get hardware descriptor
         hwdesc = get_hardware_descriptor()
-        
+
         # Load real preferences data
         preferences = {}
         try:
-            from mod.settings import PREFERENCES_JSON_FILE
             preferences = safe_json_load(PREFERENCES_JSON_FILE, dict)
         except:
             logger.warning("Could not load preferences file")
-        
+
+        # Load user ID
+        user_name = ""
+        user_email = ""
+        try:
+            user_id = safe_json_load(USER_ID_JSON_FILE, dict)
+            user_name = user_id.get("name", "")
+            user_email = user_id.get("email", "")
+        except:
+            pass
+
         context = {
-            'cloud_url': "https://cloud.moddevices.com",
-            'controlchain_url': "https://wiki.moddevices.com/wiki/Control_Chain", 
-            'version': IMAGE_VERSION or "1.0.0",
-            'hmi_eeprom': 'true' if hwdesc.get('hmi_eeprom', False) else 'false',
-            'preferences': json.dumps(preferences),
-            'bufferSize': str(get_jack_buffer_size()),
-            'sampleRate': str(int(get_jack_sample_rate())),
+            "cloud_url": "https://cloud.moddevices.com",
+            "controlchain_url": "https://wiki.moddevices.com/wiki/Control_Chain",
+            "version": IMAGE_VERSION or "1.0.0",
+            "hmi_eeprom": "true" if hwdesc.get("hmi_eeprom", False) else "false",
+            "preferences": json.dumps(preferences),
+            "bufferSize": str(get_jack_buffer_size()),
+            "sampleRate": str(int(get_jack_sample_rate())),
         }
         return context
     except Exception as e:
         logger.error(f"Error generating settings template context: {e}")
         return {}
+
 
 # Template rendering endpoints
 @app.get("/", response_class=HTMLResponse)
@@ -570,7 +712,7 @@ var desktop = desktop || {
         return HTMLResponse(content=f"<h1>MOD UI</h1><p>Error: {e}</p>")
 
 
-@app.get("/pedalboard", response_class=HTMLResponse)  
+@app.get("/pedalboard", response_class=HTMLResponse)
 async def pedalboard_page(bundlepath: str = ""):
     """Serve the pedalboard page with proper template context"""
     try:
@@ -718,10 +860,14 @@ async def get_system_info():
 # Plugin Management
 @app.get("/effect/list")
 async def get_plugin_list_endpoint():
-    """List all available plugins"""
+    """List all available plugins (matches original EffectList handler)"""
     try:
-        plugins = get_plugin_list()
-        return JSONResponse({"success": True, "data": {"plugins": plugins}})
+        # Use get_all_plugins() to get plugin objects with proper structure
+        # This matches the original Tornado EffectList handler
+        from modtools.utils import get_all_plugins
+
+        plugins = get_all_plugins()
+        return JSONResponse(plugins)
     except Exception as e:
         logger.error(f"Error getting plugin list: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -755,6 +901,67 @@ async def remove_favorite(uri: str):
         app_state.favorites.remove(uri)
         # TODO: Save to favorites file
     return JSONResponse({"success": True, "message": "Removed from favorites"})
+
+
+# Template loader endpoint (matches original BulkTemplateLoader)
+@app.get("/js/templates.js")
+async def bulk_template_loader():
+    """Load all HTML templates and convert them to JavaScript TEMPLATES object"""
+    import os
+    import re
+
+    from fastapi.responses import Response
+
+    content = []
+    include_dir = os.path.join(HTML_DIR, "include")
+
+    if os.path.exists(include_dir):
+        for template_file in os.listdir(include_dir):
+            if not re.match(r"^[a-z_]+\.html$", template_file):
+                continue
+
+            template_path = os.path.join(include_dir, template_file)
+            try:
+                with open(template_path, "r", encoding="utf-8") as fh:
+                    template_content = fh.read()
+
+                # Use mod_squeeze to escape for JavaScript
+                template_name = template_file[:-5]  # Remove .html extension
+                escaped_content = mod_squeeze(template_content)
+                content.append(f"TEMPLATES['{template_name}'] = '{escaped_content}';\n")
+
+            except Exception as e:
+                logger.error(f"Error loading template {template_file}: {e}")
+
+    javascript_content = "\n".join(content)
+
+    return Response(
+        content=javascript_content,
+        media_type="text/javascript; charset=UTF-8",
+        headers={
+            "Cache-Control": "public, max-age=31536000",
+            "Expires": "Mon, 31 Dec 2035 12:00:00 GMT",
+        },
+    )
+
+
+# Custom JS file handler for other JS files (after templates.js is handled above)
+@app.get("/js/{filename}")
+async def serve_js_files(filename: str):
+    """Serve static JS files (templates.js is handled by the endpoint above)"""
+    js_dir = os.path.join(HTML_DIR, "js")
+    file_path = os.path.join(js_dir, filename)
+
+    # Security check to prevent directory traversal
+    if not os.path.commonpath([js_dir, file_path]) == js_dir:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    from fastapi.responses import FileResponse
+
+    return FileResponse(file_path, media_type="application/javascript")
 
 
 # WebSocket endpoint
@@ -959,24 +1166,26 @@ async def save_config_value(key: str = Form(...), value: str = Form(...)):
 
         # Load existing preferences
         preferences = safe_json_load(PREFERENCES_JSON_FILE, dict)
-        
+
         # Update the value
         preferences[key] = value
-        
+
         # Ensure data directory exists
         os.makedirs(os.path.dirname(PREFERENCES_JSON_FILE), exist_ok=True)
-        
-        # Save preferences atomically 
+
+        # Save preferences atomically
         import tempfile
+
         temp_path = PREFERENCES_JSON_FILE + ".tmp"
         with open(temp_path, "w") as f:
             json.dump(preferences, f, indent=4)
         os.rename(temp_path, PREFERENCES_JSON_FILE)
-        
+
         return JSONResponse(True)
     except Exception as e:
         logger.error(f"Error saving config value {key}={value}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/system/prefs")
 async def get_system_preferences():
@@ -984,36 +1193,37 @@ async def get_system_preferences():
     try:
         # Implement system preferences logic matching original
         ret = {}
-        
+
         # Bluetooth name
         bluetooth_path = "/data/bluetooth/name"
         if os.path.exists(bluetooth_path):
             try:
-                with open(bluetooth_path, 'r') as f:
-                    ret['bluetooth_name'] = f.read().strip()
+                with open(bluetooth_path, "r") as f:
+                    ret["bluetooth_name"] = f.read().strip()
             except:
-                ret['bluetooth_name'] = None
+                ret["bluetooth_name"] = None
         else:
-            ret['bluetooth_name'] = None
-            
+            ret["bluetooth_name"] = None
+
         # File-based flags
-        ret['jack_mono_copy'] = os.path.exists("/data/jack-mono-copy")
-        ret['jack_sync_mode'] = os.path.exists("/data/jack-sync-mode")
-        ret['jack_256_frames'] = os.path.exists("/data/using-256-frames")
-        ret['separate_spdif_outs'] = os.path.exists("/data/separate-spdif-outs")
-        
+        ret["jack_mono_copy"] = os.path.exists("/data/jack-mono-copy")
+        ret["jack_sync_mode"] = os.path.exists("/data/jack-sync-mode")
+        ret["jack_256_frames"] = os.path.exists("/data/using-256-frames")
+        ret["separate_spdif_outs"] = os.path.exists("/data/separate-spdif-outs")
+
         # Services
-        ret['service_mod_peakmeter'] = not os.path.exists("/data/disable-mod-peakmeter")
-        ret['service_mod_sdk'] = os.path.exists("/data/enable-mod-sdk")
-        ret['service_netmanager'] = not os.path.exists("/data/disable-netmanager")
-        
+        ret["service_mod_peakmeter"] = not os.path.exists("/data/disable-mod-peakmeter")
+        ret["service_mod_sdk"] = os.path.exists("/data/enable-mod-sdk")
+        ret["service_netmanager"] = not os.path.exists("/data/disable-netmanager")
+
         # Workarounds
-        ret['autorestart_hmi'] = os.path.exists("/data/autorestart-hmi")
-        
+        ret["autorestart_hmi"] = os.path.exists("/data/autorestart-hmi")
+
         return JSONResponse(ret)
     except Exception as e:
         logger.error(f"Error getting system preferences: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/favorites")
 async def get_favorites():
@@ -1021,46 +1231,50 @@ async def get_favorites():
     favorites = safe_json_load(FAVORITES_JSON_FILE, list)
     return JSONResponse(favorites)
 
+
 @app.post("/favorites/add")
 async def add_favorite(uri: str = Form(...)):
     """Add plugin to favorites"""
     try:
         favorites = safe_json_load(FAVORITES_JSON_FILE, list)
-        
+
         if uri not in favorites:
             favorites.append(uri)
-            
+
             # Ensure data directory exists
             os.makedirs(os.path.dirname(FAVORITES_JSON_FILE), exist_ok=True)
-            
+
             # Save favorites atomically
             import tempfile
+
             temp_path = FAVORITES_JSON_FILE + ".tmp"
             with open(temp_path, "w") as f:
                 json.dump(favorites, f)
             os.rename(temp_path, FAVORITES_JSON_FILE)
-            
+
         return JSONResponse(True)
     except Exception as e:
         logger.error(f"Error adding favorite {uri}: {e}")
         return JSONResponse(False)
+
 
 @app.post("/favorites/remove")
 async def remove_favorite(uri: str = Form(...)):
     """Remove plugin from favorites"""
     try:
         favorites = safe_json_load(FAVORITES_JSON_FILE, list)
-        
+
         if uri in favorites:
             favorites.remove(uri)
-            
+
             # Save favorites atomically
             import tempfile
+
             temp_path = FAVORITES_JSON_FILE + ".tmp"
             with open(temp_path, "w") as f:
                 json.dump(favorites, f)
             os.rename(temp_path, FAVORITES_JSON_FILE)
-            
+
         return JSONResponse(True)
     except Exception as e:
         logger.error(f"Error removing favorite {uri}: {e}")
@@ -1213,5 +1427,4 @@ if __name__ == "__main__":
         port=port,
         reload=debug,
         log_level="debug" if debug else "info",
-    )
     )
