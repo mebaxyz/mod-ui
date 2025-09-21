@@ -14,7 +14,7 @@ import sys
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Form
+from fastapi import FastAPI, Form, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -315,9 +315,9 @@ def get_template_context_index():
             logger.warning("Could not load default templates")
             
         # Load real MOD data
-        import json
         import base64
-        
+        import json
+
         # Load favorites
         favorites = []
         try:
@@ -460,9 +460,10 @@ def get_template_context_settings():
     """Generate template context for settings page matching original TemplateHandler.settings()"""
     try:
         # Import MOD utilities
+        import json
+
         from mod import get_hardware_descriptor
         from modtools.utils import get_jack_buffer_size, get_jack_sample_rate
-        import json
 
         # Get hardware descriptor
         hwdesc = get_hardware_descriptor()
@@ -955,7 +956,7 @@ async def save_config_value(key: str = Form(...), value: str = Form(...)):
     """Set a single configuration value (matches original SaveSingleConfigValue)"""
     try:
         from mod.settings import PREFERENCES_JSON_FILE
-        
+
         # Load existing preferences
         preferences = safe_json_load(PREFERENCES_JSON_FILE, dict)
         
@@ -1212,4 +1213,5 @@ if __name__ == "__main__":
         port=port,
         reload=debug,
         log_level="debug" if debug else "info",
+    )
     )
