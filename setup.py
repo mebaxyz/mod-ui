@@ -125,7 +125,7 @@ setup(name = 'mod',
                     (('share/mod/html/resources/pedals'), glob('html/resources/pedals/*.css')),
                     (('share/mod/html/resources/templates'), glob('html/resources/templates/*.html')),
       ],
-      install_requires = ['tornado'],
+      install_requires = ['fastapi', 'uvicorn'],
 
       classifiers = [
           'Intended Audience :: Developers',
