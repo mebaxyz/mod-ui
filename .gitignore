@@ -38,3 +38,8 @@ utils/test
 *node_modules/
 .idea
 *.egg-info
+
+# VSCode
+.vscode/settings.json
+.vscode/launch.json
+!.vscode/README.md
