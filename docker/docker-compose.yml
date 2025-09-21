@@ -1,95 +1,70 @@
-"""version: '3.8'
+# Docker Compose configuration for MOD UI microservices
+version: '3.8'
 
-Docker Compose configuration for MOD UI microservices
-
-"""services:
-
-  mod-ui:
-
-version: '3.8'    build:
-
-      context: .
-
-services:      dockerfile: services/mod-ui-service/Dockerfile
-
-  # API Service - FastAPI backend    ports:
-
-  mod-api:      - "8080:8080"
-
-    build:    volumes:
-
-      context: .      - ./html:/app/html
-
-      dockerfile: docker/api/Dockerfile    environment:
-
-    container_name: mod-ui-api      - MOD_HTML_DIR=/app/html
-
+services:
+  # API Service - FastAPI backend
+  mod-api:
+    build:
+      context: ..
+      dockerfile: docker/api/Dockerfile
+    container_name: mod-ui-api
     ports:
-
-      - "8888:8888"  mod-api:
-
-    environment:    build:
-
-      - MOD_DEBUG=1      context: .
-
-      - MOD_PORT=8888      dockerfile: services/mod-api/Dockerfile
-
-      - MOD_HOST=0.0.0.0    ports:
-
-      - MOD_DATA_DIR=/data      - "8888:8888"
-
-      - MOD_LOG=1    volumes:
-
-    volumes:      - ./data:/app/data
-
-      - ./data:/data      - ./mod:/app/mod
-
-      - ./html:/app/html:ro      - ./html:/app/html
-
-      - ./default.pedalboard:/app/default.pedalboard:ro    depends_on:
-
-      - /tmp/.X11-unix:/tmp/.X11-unix:ro      - mod-ui
-
-    devices:    environment:
-
-      - /dev/snd:/dev/snd      - MOD_HTML_DIR=/app/html
-
-    privileged: true      - MOD_DATA_DIR=/app/data
-
+      - "8888:8888"
+    environment:
+      - MOD_DEBUG=1
+      - MOD_PORT=8888
+      - MOD_HOST=0.0.0.0
+      - MOD_DATA_DIR=/app/data
+      - MOD_HTML_DIR=/app/html
+      - MOD_LOG=1
+    volumes:
+      - ../data:/app/data
+      - ../html:/app/html:ro
+      - ../mod:/app/mod:ro
+      - ../modtools:/app/modtools:ro
+      - ../utils:/app/utils:ro
+      - ../default.pedalboard:/app/default.pedalboard:ro
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+    devices:
+      - /dev/snd:/dev/snd
+    privileged: true
     networks:
-
-      - mod-network  # Add more services as needed
+      - mod-network
     restart: unless-stopped
     depends_on:
       - mod-session
 
-  # Web Service - Static file server
-  mod-web:
-    image: nginx:alpine
+  # Web UI Service - Static file server
+  mod-ui:
+    build:
+      context: ..
+      dockerfile: docker/web/Dockerfile
     container_name: mod-ui-web
     ports:
       - "8080:80"
     volumes:
-      - ./html:/usr/share/nginx/html:ro
-      - ./docker/web/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../html:/usr/share/nginx/html:ro
+      - ./web/nginx.conf:/etc/nginx/nginx.conf:ro
     networks:
       - mod-network
     restart: unless-stopped
+    depends_on:
+      - mod-api
 
   # Session Service - Core MOD UI logic (transition service)
   mod-session:
     build:
-      context: .
+      context: ..
       dockerfile: docker/session/Dockerfile
     container_name: mod-ui-session
     environment:
       - MOD_DEBUG=1
-      - MOD_DATA_DIR=/data
+      - MOD_DATA_DIR=/app/data
       - MOD_LOG=1
       - DEV_ENVIRONMENT=0
     volumes:
-      - ./data:/data
-      - ./utils:/app/utils:ro
+      - ../data:/app/data
+      - ../utils:/app/utils:ro
       - /tmp/.X11-unix:/tmp/.X11-unix:ro
     devices:
       - /dev/snd:/dev/snd

@@ -20,16 +20,51 @@ from datetime import datetime
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
 
-from mod.session import SESSION
-from mod.settings import (
-    HTML_DIR, DEVICE_WEBSERVER_PORT, LOG, DESKTOP,
-    FAVORITES_JSON_FILE, DEFAULT_PEDALBOARD, IMAGE_VERSION
-)
-from mod import check_environment, safe_json_load
-from modtools.utils import (
-    init as lv2_init, get_plugin_list, get_all_plugins,
-    get_plugin_info, get_non_cached_plugin_info
-)
+# TODO: Import these when ready
+# from mod.session import SESSION
+SESSION = None
+
+# Basic settings (avoid importing complex modules initially)
+HTML_DIR = os.environ.get('MOD_HTML_DIR', '/app/html')
+DEVICE_WEBSERVER_PORT = int(os.environ.get('MOD_PORT', 8888))
+LOG = int(os.environ.get('MOD_LOG', 1))
+DESKTOP = os.environ.get('MOD_DESKTOP', '0') == '1'
+FAVORITES_JSON_FILE = os.environ.get('MOD_FAVORITES_FILE', '/app/data/favorites.json')
+DEFAULT_PEDALBOARD = os.environ.get('MOD_DEFAULT_PEDALBOARD', '/app/default.pedalboard')
+IMAGE_VERSION = os.environ.get('MOD_VERSION', '1.0.0')
+
+# TODO: Import these when ready
+# from mod import check_environment, safe_json_load
+# from modtools.utils import (
+#     init as lv2_init, get_plugin_list, get_all_plugins,
+#     get_plugin_info, get_non_cached_plugin_info
+# )
+
+def check_environment():
+    """Placeholder for environment check"""
+    pass
+
+def safe_json_load(filepath, default_type):
+    """Placeholder for safe JSON load"""
+    try:
+        if os.path.exists(filepath):
+            with open(filepath, 'r') as f:
+                return json.load(f)
+    except:
+        pass
+    return default_type()
+
+def lv2_init():
+    """Placeholder for LV2 initialization"""
+    pass
+
+def get_plugin_list():
+    """Placeholder for plugin list"""
+    return []
+
+def get_plugin_info(uri):
+    """Placeholder for plugin info"""
+    return {"uri": uri, "name": "Plugin", "version": "1.0.0"}
 
 # Configure logging
 logging.basicConfig(level=(logging.DEBUG if LOG else logging.WARNING))
@@ -106,10 +141,10 @@ async def startup_event():
     # Load favorites
     app_state.favorites = safe_json_load(FAVORITES_JSON_FILE, list)
     
-    # Clean up invalid favorites
-    if len(app_state.favorites) > 0:
-        uris = get_plugin_list()
-        app_state.favorites = [uri for uri in app_state.favorites if uri in uris]
+    # Clean up invalid favorites (skip for now)
+    # if len(app_state.favorites) > 0:
+    #     uris = get_plugin_list()
+    #     app_state.favorites = [uri for uri in app_state.favorites if uri in uris]
     
     logger.info("MOD UI FastAPI application started successfully")
 
@@ -126,8 +161,8 @@ async def shutdown_event():
         except Exception as e:
             logger.error(f"Error closing WebSocket: {e}")
     
-    # End session
-    SESSION.signal_disconnect()
+    # TODO: End session when ready
+    # SESSION.signal_disconnect()
     logger.info("MOD UI FastAPI application shutdown complete")
 
 # Root endpoint
@@ -202,8 +237,8 @@ async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time communication"""
     await manager.connect(websocket)
     
-    # Notify session about WebSocket connection
-    await SESSION.websocket_opened(websocket)
+    # TODO: Notify session about WebSocket connection when ready
+    # await SESSION.websocket_opened(websocket)
     
     try:
         while True:
@@ -215,7 +250,8 @@ async def websocket_endpoint(websocket: WebSocket):
             
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-        await SESSION.websocket_closed(websocket)
+        # TODO: Notify session when ready
+        # await SESSION.websocket_closed(websocket)
         logger.info("WebSocket disconnected")
     except Exception as e:
         logger.error(f"WebSocket error: {e}")

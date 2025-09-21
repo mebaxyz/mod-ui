@@ -1,70 +1,60 @@
-# FastAPI API Service DockerfileFROM python:3.10-slim
+# FastAPI API Service Dockerfile
+FROM python:3.11-slim
 
-
-
-FROM python:3.11-slim# Install system dependencies for building the C++ library
-
+# Install system dependencies for building the C++ library
 RUN apt-get update && apt-get install -y \
-
-# Install system dependencies    build-essential \
-
-RUN apt-get update && apt-get install -y \    pkg-config \
-
-    build-essential \    libjack-jackd2-dev \
-
-    libjack-jackd2-dev \    liblilv-dev \
-
-    liblilv-dev \    libalsa-ocaml-dev \
-
-    libserd-dev \    && rm -rf /var/lib/apt/lists/*
-
+    build-essential \
+    pkg-config \
+    libjack-jackd2-dev \
+    liblilv-dev \
+    libserd-dev \
     libsord-dev \
-
-    libsratom-dev \WORKDIR /app
-
+    libsratom-dev \
     lv2-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-    pkg-config \COPY services/mod-api/requirements.txt .
+# Set working directory
+WORKDIR /app
 
-    && rm -rf /var/lib/apt/lists/*RUN pip install --no-cache-dir -r requirements.txt
-
-
-
-# Set working directoryCOPY mod/ ./mod/
-
-WORKDIR /appCOPY modtools/ ./modtools/
-
-
-
-# Copy requirements first for better caching# Copy and build the C++ utilities
-
-COPY requirements.txt .COPY utils/ ./utils/
-
-RUN cd utils && make
+# Copy requirements first for better caching
+COPY requirements.txt .
 
 # Install Python dependencies
-
-RUN pip install --no-cache-dir -r requirements.txt# Copy the built library to modtools directory
-
-RUN cp utils/libmod_utils.so modtools/
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
-
-COPY src/ src/COPY services/mod-api/main.py .
-
+COPY src/ src/
 COPY mod/ mod/
-
-COPY modtools/ modtools/# Set library path for the compiled library
-
-COPY utils/ utils/ENV LD_LIBRARY_PATH=/app/utils:$LD_LIBRARY_PATH
-
+COPY modtools/ modtools/
+COPY utils/ utils/
 COPY html/ html/
+COPY default.pedalboard/ default.pedalboard/
 
-COPY default.pedalboard/ default.pedalboard/EXPOSE 8888
+# Build C++ utilities
+RUN cd utils && make
 
+# Copy the built library to modtools directory
+RUN cp utils/libmod_utils.so modtools/
 
+# Set library path for the compiled library
+ENV LD_LIBRARY_PATH=/app/utils:$LD_LIBRARY_PATH
 
-# Build C++ utilitiesCMD ["python", "main.py"]
+# Create data directory
+RUN mkdir -p /data
+
+# Set Python path
+ENV PYTHONPATH=/app
+
+# Expose port
+EXPOSE 8888
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8888/ping || exit 1
+
+# Run the FastAPI application
+CMD ["python", "-m", "uvicorn", "src.mod_ui.services.api.main:app", "--host", "0.0.0.0", "--port", "8888"]
 RUN make -C utils
 
 # Create data directory
