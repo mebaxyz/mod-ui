@@ -1,0 +1,161 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "MOD UI (Development)",
+            "type": "python",
+            "request": "launch",
+            "module": "mod.webserver",
+            "args": ["run"],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "MOD_DEBUG": "1",
+                "MOD_PORT": "8888",
+                "MOD_HOST": "127.0.0.1"
+            },
+            "console": "integratedTerminal",
+            "autoReload": {
+                "enable": true
+            },
+            "subProcess": true
+        },
+        {
+            "name": "MOD UI (Production)",
+            "type": "python",
+            "request": "launch",
+            "module": "mod.webserver",
+            "args": ["run"],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "MOD_DEBUG": "0",
+                "MOD_PORT": "8888",
+                "MOD_HOST": "127.0.0.1"
+            },
+            "console": "integratedTerminal",
+            "subProcess": true
+        },
+        {
+            "name": "MOD UI (Custom Port)",
+            "type": "python",
+            "request": "launch",
+            "module": "mod.webserver",
+            "args": ["run"],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "MOD_DEBUG": "1",
+                "MOD_PORT": "8080",
+                "MOD_HOST": "127.0.0.1"
+            },
+            "console": "integratedTerminal",
+            "subProcess": true
+        },
+        {
+            "name": "MOD UI (All Interfaces)",
+            "type": "python",
+            "request": "launch",
+            "module": "mod.webserver",
+            "args": ["run"],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "MOD_DEBUG": "1",
+                "MOD_PORT": "8888",
+                "MOD_HOST": "0.0.0.0"
+            },
+            "console": "integratedTerminal",
+            "subProcess": true
+        },
+        {
+            "name": "Attach to MOD UI",
+            "type": "python",
+            "request": "attach",
+            "connect": {
+                "host": "127.0.0.1",
+                "port": 5678
+            },
+            "pathMappings": [
+                {
+                    "localRoot": "${workspaceFolder}",
+                    "remoteRoot": "."
+                }
+            ]
+        },
+        {
+            "name": "MOD UI Tests",
+            "type": "python",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "test/",
+                "-v",
+                "--tb=short"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "MOD UI Test (Current File)",
+            "type": "python",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "${file}",
+                "-v",
+                "--tb=short"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "MOD UI (FastAPI - Development)",
+            "type": "python",
+            "request": "launch",
+            "module": "src.mod_ui.api.main",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "MOD_DEBUG": "1",
+                "MOD_PORT": "8888",
+                "MOD_HOST": "127.0.0.1"
+            },
+            "console": "integratedTerminal",
+            "subProcess": true
+        },
+        {
+            "name": "MOD UI (FastAPI - Production)",
+            "type": "python",
+            "request": "launch",
+            "module": "src.mod_ui.api.main",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "MOD_DEBUG": "0",
+                "MOD_PORT": "8888",
+                "MOD_HOST": "127.0.0.1"
+            },
+            "console": "integratedTerminal",
+            "subProcess": true
+        },
+        {
+            "name": "MOD UI (FastAPI - Uvicorn)",
+            "type": "python",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "src.mod_ui.api.main:app",
+                "--host", "127.0.0.1",
+                "--port", "8888",
+                "--reload"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "MOD_DEBUG": "1"
+            },
+            "console": "integratedTerminal",
+            "subProcess": true
+        },
+    ]
+}

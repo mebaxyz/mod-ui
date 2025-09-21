@@ -39,7 +39,14 @@ utils/test
 .idea
 *.egg-info
 
-# VSCode
-.vscode/settings.json
-.vscode/launch.json
+# VSCode - allow settings and launch for development
+!.vscode/settings.json
+!.vscode/launch.json
 !.vscode/README.md
+
+# FastAPI Migration
+venv/
+logs/
+tmp/
+.env
+*.log

@@ -1,0 +1,94 @@
+# Docker compose development environment for MOD UI
+
+version: '3.8'
+
+services:
+  mod-api:
+    build:
+      context: ..
+      dockerfile: docker/api/Dockerfile
+    container_name: mod-ui-api
+    restart: unless-stopped
+    ports:
+      - "8888:8888"
+    volumes:
+      - ../src:/app/src
+      - ../mod:/app/mod
+      - ../modtools:/app/modtools
+      - ../default.pedalboard:/app/default.pedalboard
+      - mod-data:/data
+    environment:
+      - MOD_DEV=1
+      - MOD_LOG_LEVEL=DEBUG
+      - MOD_DATA_DIR=/data
+      - MOD_DEVICE_WEBSERVER_PORT=8888
+    depends_on:
+      - mod-session
+    networks:
+      - mod-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  mod-web:
+    build:
+      context: ..
+      dockerfile: docker/web/Dockerfile
+    container_name: mod-ui-web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ../html:/app/html
+    depends_on:
+      - mod-api
+    networks:
+      - mod-network
+
+  mod-session:
+    build:
+      context: ..
+      dockerfile: docker/session/Dockerfile
+    container_name: mod-ui-session
+    restart: unless-stopped
+    ports:
+      - "5555:5555"  # Session service port
+    volumes:
+      - ../mod:/app/mod
+      - mod-data:/data
+    environment:
+      - MOD_DEV=1
+      - MOD_LOG_LEVEL=DEBUG
+      - MOD_DATA_DIR=/data
+    networks:
+      - mod-network
+
+  mod-hardware:
+    build:
+      context: ..
+      dockerfile: docker/hardware/Dockerfile
+    container_name: mod-ui-hardware
+    restart: unless-stopped
+    volumes:
+      - ../mod:/app/mod
+      - /dev:/dev
+      - mod-data:/data
+    privileged: true  # Required for hardware access
+    environment:
+      - MOD_DEV=1
+      - MOD_LOG_LEVEL=DEBUG
+      - MOD_DATA_DIR=/data
+    depends_on:
+      - mod-session
+    networks:
+      - mod-network
+
+volumes:
+  mod-data:
+    driver: local
+
+networks:
+  mod-network:
+    driver: bridge
