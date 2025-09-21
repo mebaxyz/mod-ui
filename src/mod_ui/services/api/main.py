@@ -14,7 +14,7 @@ import sys
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -314,9 +314,47 @@ def get_template_context_index():
         except:
             logger.warning("Could not load default templates")
             
-        # Get pedalboard info (placeholder for now)
+        # Load real MOD data
+        import json
+        import base64
+        
+        # Load favorites
+        favorites = []
+        try:
+            favorites = safe_json_load(FAVORITES_JSON_FILE, list)
+        except:
+            pass
+            
+        # Load preferences 
+        preferences = {}
+        try:
+            from mod.settings import PREFERENCES_JSON_FILE
+            preferences = safe_json_load(PREFERENCES_JSON_FILE, dict)
+        except:
+            pass
+            
+        # Load user ID
+        user_name = ""
+        user_email = ""
+        try:
+            from mod.settings import USER_ID_JSON_FILE
+            user_id = safe_json_load(USER_ID_JSON_FILE, dict)
+            user_name = user_id.get("name", "")
+            user_email = user_id.get("email", "")
+        except:
+            pass
+            
+        # Get pedalboard info (placeholder for SESSION integration)
         pbname = ""
         fullpbname = "Untitled"
+        
+        # Get hardware profile 
+        hardware_profile = "e30="  # base64 encoded empty dict
+        try:
+            # TODO: Integrate with SESSION.get_hardware_actuators()
+            hardware_profile = base64.b64encode(json.dumps({}).encode("utf-8")).decode("utf-8") 
+        except:
+            pass
         
         # Build context matching original
         context = {
@@ -329,7 +367,7 @@ def get_template_context_index():
             'pedalboards_url': "https://cloud.moddevices.com/pedalboards",
             'pedalboards_labs_url': "https://cloud.moddevices.com/labs/pedalboards",
             'controlchain_url': "https://wiki.moddevices.com/wiki/Control_Chain",
-            'hardware_profile': "e30=",  # base64 encoded empty dict for now
+            'hardware_profile': hardware_profile,
             'version': IMAGE_VERSION or "1.0.0",
             'bin_compat': hwdesc.get('bin-compat', "x86_64"),
             'codec_truebypass': 'true' if hwdesc.get('codec_truebypass', False) else 'false',
@@ -338,17 +376,17 @@ def get_template_context_index():
             'addressing_pages': int(hwdesc.get('addressing_pages', 0)),
             'lv2_plugin_dir': "/app/lv2",
             'bundlepath': "",
-            'title': pbname,
+            'title': user_name.replace("\\", "\\\\").replace("'", "\\'") if user_name else pbname,
             'size': "[]",
             'fulltitle': fullpbname,
             'titleblend': 'blend' if not pbname else '',
             'dev_api_class': '',
             'using_desktop': 'false',
             'using_mod': 'true',
-            'user_name': "",
-            'user_email': "",
-            'favorites': "[]",
-            'preferences': "{}",
+            'user_name': user_name.replace("\\", "\\\\").replace("'", "\\'"),
+            'user_email': user_email.replace("\\", "\\\\").replace("'", "\\'"),
+            'favorites': json.dumps(favorites),
+            'preferences': json.dumps(preferences),
             'bufferSize': str(get_jack_buffer_size()),
             'sampleRate': str(int(get_jack_sample_rate())),
         }
@@ -424,16 +462,25 @@ def get_template_context_settings():
         # Import MOD utilities
         from mod import get_hardware_descriptor
         from modtools.utils import get_jack_buffer_size, get_jack_sample_rate
+        import json
 
         # Get hardware descriptor
         hwdesc = get_hardware_descriptor()
+        
+        # Load real preferences data
+        preferences = {}
+        try:
+            from mod.settings import PREFERENCES_JSON_FILE
+            preferences = safe_json_load(PREFERENCES_JSON_FILE, dict)
+        except:
+            logger.warning("Could not load preferences file")
         
         context = {
             'cloud_url': "https://cloud.moddevices.com",
             'controlchain_url': "https://wiki.moddevices.com/wiki/Control_Chain", 
             'version': IMAGE_VERSION or "1.0.0",
             'hmi_eeprom': 'true' if hwdesc.get('hmi_eeprom', False) else 'false',
-            'preferences': "{}",
+            'preferences': json.dumps(preferences),
             'bufferSize': str(get_jack_buffer_size()),
             'sampleRate': str(int(get_jack_sample_rate())),
         }
@@ -902,27 +949,121 @@ async def websocket_health():
 
 
 # System Preferences
+# Settings management endpoints matching original MOD system
+@app.post("/config/set")
+async def save_config_value(key: str = Form(...), value: str = Form(...)):
+    """Set a single configuration value (matches original SaveSingleConfigValue)"""
+    try:
+        from mod.settings import PREFERENCES_JSON_FILE
+        
+        # Load existing preferences
+        preferences = safe_json_load(PREFERENCES_JSON_FILE, dict)
+        
+        # Update the value
+        preferences[key] = value
+        
+        # Ensure data directory exists
+        os.makedirs(os.path.dirname(PREFERENCES_JSON_FILE), exist_ok=True)
+        
+        # Save preferences atomically 
+        import tempfile
+        temp_path = PREFERENCES_JSON_FILE + ".tmp"
+        with open(temp_path, "w") as f:
+            json.dump(preferences, f, indent=4)
+        os.rename(temp_path, PREFERENCES_JSON_FILE)
+        
+        return JSONResponse(True)
+    except Exception as e:
+        logger.error(f"Error saving config value {key}={value}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/system/prefs")
 async def get_system_preferences():
-    """Get system preferences"""
-    preferences_file = os.environ.get(
-        "MOD_PREFERENCES_FILE", "/app/data/preferences.json"
-    )
-    preferences = safe_json_load(preferences_file, dict)
+    """Get system preferences (matches original SystemPreferences)"""
+    try:
+        # Implement system preferences logic matching original
+        ret = {}
+        
+        # Bluetooth name
+        bluetooth_path = "/data/bluetooth/name"
+        if os.path.exists(bluetooth_path):
+            try:
+                with open(bluetooth_path, 'r') as f:
+                    ret['bluetooth_name'] = f.read().strip()
+            except:
+                ret['bluetooth_name'] = None
+        else:
+            ret['bluetooth_name'] = None
+            
+        # File-based flags
+        ret['jack_mono_copy'] = os.path.exists("/data/jack-mono-copy")
+        ret['jack_sync_mode'] = os.path.exists("/data/jack-sync-mode")
+        ret['jack_256_frames'] = os.path.exists("/data/using-256-frames")
+        ret['separate_spdif_outs'] = os.path.exists("/data/separate-spdif-outs")
+        
+        # Services
+        ret['service_mod_peakmeter'] = not os.path.exists("/data/disable-mod-peakmeter")
+        ret['service_mod_sdk'] = os.path.exists("/data/enable-mod-sdk")
+        ret['service_netmanager'] = not os.path.exists("/data/disable-netmanager")
+        
+        # Workarounds
+        ret['autorestart_hmi'] = os.path.exists("/data/autorestart-hmi")
+        
+        return JSONResponse(ret)
+    except Exception as e:
+        logger.error(f"Error getting system preferences: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-    # Default preferences if file doesn't exist
-    if not preferences:
-        preferences = {
-            "device_name": "MOD Device",
-            "auto_save": True,
-            "buffer_size": 256,
-            "sample_rate": 48000,
-            "midi_channel": 1,
-            "tuner_mode": "auto",
-            "tempo_sync": True,
-        }
+@app.get("/favorites")
+async def get_favorites():
+    """Get user favorites list"""
+    favorites = safe_json_load(FAVORITES_JSON_FILE, list)
+    return JSONResponse(favorites)
 
-    return JSONResponse({"success": True, "data": preferences})
+@app.post("/favorites/add")
+async def add_favorite(uri: str = Form(...)):
+    """Add plugin to favorites"""
+    try:
+        favorites = safe_json_load(FAVORITES_JSON_FILE, list)
+        
+        if uri not in favorites:
+            favorites.append(uri)
+            
+            # Ensure data directory exists
+            os.makedirs(os.path.dirname(FAVORITES_JSON_FILE), exist_ok=True)
+            
+            # Save favorites atomically
+            import tempfile
+            temp_path = FAVORITES_JSON_FILE + ".tmp"
+            with open(temp_path, "w") as f:
+                json.dump(favorites, f)
+            os.rename(temp_path, FAVORITES_JSON_FILE)
+            
+        return JSONResponse(True)
+    except Exception as e:
+        logger.error(f"Error adding favorite {uri}: {e}")
+        return JSONResponse(False)
+
+@app.post("/favorites/remove")
+async def remove_favorite(uri: str = Form(...)):
+    """Remove plugin from favorites"""
+    try:
+        favorites = safe_json_load(FAVORITES_JSON_FILE, list)
+        
+        if uri in favorites:
+            favorites.remove(uri)
+            
+            # Save favorites atomically
+            import tempfile
+            temp_path = FAVORITES_JSON_FILE + ".tmp"
+            with open(temp_path, "w") as f:
+                json.dump(favorites, f)
+            os.rename(temp_path, FAVORITES_JSON_FILE)
+            
+        return JSONResponse(True)
+    except Exception as e:
+        logger.error(f"Error removing favorite {uri}: {e}")
+        return JSONResponse(False)
 
 
 @app.post("/system/prefs")
@@ -1068,10 +1209,6 @@ if __name__ == "__main__":
     uvicorn.run(
         "main:app",
         host=host,
-        port=port,
-        reload=debug,
-        log_level="debug" if debug else "info",
-    )
         port=port,
         reload=debug,
         log_level="debug" if debug else "info",
