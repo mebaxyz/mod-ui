@@ -38,24 +38,7 @@ RUN cd utils && make
 RUN cp utils/libmod_utils.so modtools/
 
 # Set library path for the compiled library
-ENV LD_LIBRARY_PATH=/app/utils:$LD_LIBRARY_PATH
-
-# Create data directory
-RUN mkdir -p /data
-
-# Set Python path
-ENV PYTHONPATH=/app
-
-# Expose port
-EXPOSE 8888
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8888/ping || exit 1
-
-# Run the FastAPI application
-CMD ["python", "-m", "uvicorn", "src.mod_ui.services.api.main:app", "--host", "0.0.0.0", "--port", "8888"]
-RUN make -C utils
+ENV LD_LIBRARY_PATH=/app/utils:/app/modtools:$LD_LIBRARY_PATH
 
 # Create data directory
 RUN mkdir -p /data

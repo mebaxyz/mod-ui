@@ -32,6 +32,12 @@ COPY utils/ utils/
 # Build C++ utilities
 RUN make -C utils
 
+# Copy the built library to modtools directory
+RUN cp utils/libmod_utils.so modtools/
+
+# Set library path for the compiled library
+ENV LD_LIBRARY_PATH=/app/utils:/app/modtools:$LD_LIBRARY_PATH
+
 # Create data directory
 RUN mkdir -p /data
 
