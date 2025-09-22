@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI):
 
         # Initialize event router (lightweight, creates task but doesn't block)
         event_router = EventRouter(connection_manager)
-        
+
         # Initialize Redis event subscriber
         redis_subscriber = RedisEventSubscriber(event_router)
 
