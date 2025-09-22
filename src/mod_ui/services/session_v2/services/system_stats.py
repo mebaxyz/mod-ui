@@ -1,8 +1,8 @@
 """
 System Statistics Service for Session System
 
-Collects and broadcasts system statistics (CPU load, memory usage, etc.)
-to WebSocket clients in the format expected by the legacy frontend.
+Collects system statistics (CPU load, memory usage, etc.)
+and publishes them to the event bus for distribution.
 """
 
 import asyncio
@@ -10,18 +10,22 @@ import logging
 import os
 from typing import Optional
 
+from ..models.events import EventType, create_system_stats_event
+from ..utils.event_bus import EventBus
+
 
 class SystemStatsService:
     """
-    Service for collecting and broadcasting system statistics
+    Service for collecting and publishing system statistics
 
-    This service mimics the behavior of the legacy host.py stats broadcasting,
-    sending periodic 'stats' and 'sys_stats' messages to connected clients.
+    This service collects system stats and publishes them to the event bus.
+    The WebSocket Gateway Service will receive these events and broadcast
+    them to connected clients in the appropriate format.
     """
 
-    def __init__(self, websocket_hub, broadcast_interval: float = 1.0):
+    def __init__(self, event_bus: EventBus, broadcast_interval: float = 1.0):
         self.logger = logging.getLogger(__name__)
-        self.websocket_hub = websocket_hub
+        self.event_bus = event_bus
         self.broadcast_interval = broadcast_interval
         self.running = False
         self.stats_task: Optional[asyncio.Task] = None
@@ -107,7 +111,7 @@ class SystemStatsService:
             self.logger.error(f"Error in sys stats broadcast loop: {e}")
 
     async def _collect_and_send_stats(self) -> None:
-        """Collect CPU load and xruns data and broadcast to clients"""
+        """Collect CPU load and xruns data and publish event"""
         try:
             # Get CPU load percentage from /proc/loadavg (simple approach)
             cpu_load = self._read_cpu_load()
@@ -120,18 +124,26 @@ class SystemStatsService:
             self.cpu_load = cpu_load
             self.xruns = xruns
 
-            # Send stats message to all clients
-            sent_count = await self.websocket_hub.send_stats_message(cpu_load, xruns)
+            # Publish stats event to event bus
+            event = create_system_stats_event(
+                "system_stats_service",
+                data={
+                    "type": "stats",
+                    "cpu_load": cpu_load,
+                    "xruns": xruns,
+                }
+            )
+            await self.event_bus.publish(event)
 
-            self.logger.info(
-                f"Sent stats to {sent_count} clients: CPU {cpu_load:.1f}%, xruns {xruns}"
+            self.logger.debug(
+                f"Published stats event: CPU {cpu_load:.1f}%, xruns {xruns}"
             )
 
         except Exception as e:
             self.logger.error(f"Error collecting stats: {e}")
 
     async def _collect_and_send_sys_stats(self) -> None:
-        """Collect system statistics and broadcast to clients"""
+        """Collect system statistics and publish event"""
         try:
             # Get memory usage percentage from /proc/meminfo
             mem_usage = self._read_memory_usage()
@@ -145,13 +157,20 @@ class SystemStatsService:
             # Update internal state
             self.mem_usage = mem_usage
 
-            # Send sys_stats message to all clients
-            sent_count = await self.websocket_hub.send_sys_stats_message(
-                mem_usage, cpu_freq, cpu_temp
+            # Publish sys_stats event to event bus
+            event = create_system_stats_event(
+                "system_stats_service",
+                data={
+                    "type": "sys_stats",
+                    "memory_percent": mem_usage,
+                    "cpu_frequency": cpu_freq,
+                    "cpu_temperature": cpu_temp,
+                }
             )
+            await self.event_bus.publish(event)
 
-            self.logger.info(
-                f"Sent sys_stats to {sent_count} clients: MEM {mem_usage:.1f}%, freq {cpu_freq}, temp {cpu_temp}"
+            self.logger.debug(
+                f"Published sys_stats event: MEM {mem_usage:.1f}%, freq {cpu_freq}, temp {cpu_temp}"
             )
 
         except Exception as e:
@@ -217,15 +236,28 @@ class SystemStatsService:
             return "0"
 
     async def send_data_ready(self) -> None:
-        """Send data_ready message to clients"""
+        """Publish data_ready event"""
         self.data_ready_counter += 1
-        await self.websocket_hub.send_data_ready_message(self.data_ready_counter)
-        self.logger.debug(f"Sent data_ready {self.data_ready_counter}")
+        event = create_system_stats_event(
+            "system_stats_service",
+            data={
+                "type": "data_ready",
+                "counter": self.data_ready_counter,
+            }
+        )
+        await self.event_bus.publish(event)
+        self.logger.debug(f"Published data_ready event: {self.data_ready_counter}")
 
     async def send_ping(self) -> None:
-        """Send ping message to clients"""
-        await self.websocket_hub.send_ping_message()
-        self.logger.debug("Sent ping to clients")
+        """Publish ping event"""
+        event = create_system_stats_event(
+            "system_stats_service",
+            data={
+                "type": "ping",
+            }
+        )
+        await self.event_bus.publish(event)
+        self.logger.debug("Published ping event")
 
     def get_current_stats(self) -> dict:
         """Get current statistics as a dictionary"""

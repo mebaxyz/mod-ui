@@ -213,6 +213,330 @@ async def broadcast_to_subscribers(event_type: str, message: Dict[str, Any]):
         return {"error": f"Invalid event type: {event_type}"}
 
 
+# Client management endpoints (from Session Service v2 realtime.py)
+
+@app.get("/clients")
+async def list_connected_clients():
+    """List all connected WebSocket clients"""
+    global connection_manager
+
+    if not connection_manager:
+        return {"error": "Connection manager not available"} 
+
+    try:
+        connections = await connection_manager.get_connection_info()
+        clients = [
+            {
+                "client_id": conn["client_id"],
+                "connected_at": datetime.fromtimestamp(conn["connected_at"]).isoformat(),
+                "last_activity": datetime.fromtimestamp(conn["last_activity"]).isoformat(),
+                "messages_sent": conn["messages_sent"],
+                "messages_received": conn["messages_received"],
+                "subscription_count": len(conn.get("subscriptions", [])),
+            }
+            for conn in connections
+        ]
+
+        return {
+            "success": True,
+            "clients": clients,
+            "count": len(clients),
+        }
+    except Exception as e:
+        return {"error": f"Failed to list clients: {str(e)}"}
+
+
+@app.get("/clients/{client_id}")
+async def get_client_info(client_id: str):
+    """Get information about a specific client"""
+    global connection_manager
+
+    if not connection_manager:
+        return {"error": "Connection manager not available"}
+
+    try:
+        connections = await connection_manager.get_connection_info()
+        client_info = next((conn for conn in connections if conn["client_id"] == client_id), None)
+
+        if client_info is None:
+            return {"error": "Client not found", "status_code": 404}
+
+        return {
+            "success": True,
+            "client": {
+                "client_id": client_id,
+                "connected_at": datetime.fromtimestamp(client_info["connected_at"]).isoformat(),
+                "last_activity": datetime.fromtimestamp(client_info["last_activity"]).isoformat(),
+                "messages_sent": client_info["messages_sent"],
+                "messages_received": client_info["messages_received"],
+                "subscriptions": client_info.get("subscriptions", []),
+            },
+        }
+    except Exception as e:
+        return {"error": f"Failed to get client info: {str(e)}"}
+
+
+@app.post("/clients/{client_id}/disconnect")
+async def disconnect_client(client_id: str):
+    """Disconnect a specific client"""
+    global connection_manager
+
+    if not connection_manager:
+        return {"error": "Connection manager not available"}
+
+    try:
+        success = await connection_manager.remove_connection(client_id)
+
+        if not success:
+            return {"error": "Client not found", "status_code": 404}
+
+        return {
+            "success": True,
+            "client_id": client_id,
+            "message": "Client disconnected",
+        }
+    except Exception as e:
+        return {"error": f"Failed to disconnect client: {str(e)}"}
+
+
+@app.post("/clients/{client_id}/send")
+async def send_message_to_client(client_id: str, message: Dict[str, Any]):
+    """Send a message to a specific client"""
+    global connection_manager
+
+    if not connection_manager:
+        return {"error": "Connection manager not available"}
+
+    try:
+        message_data = {
+            "type": "direct_message",
+            "data": message,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+        success = await connection_manager.send_to_client(client_id, message_data)
+
+        if not success:
+            return {"error": "Client not found or not connected", "status_code": 404}
+
+        return {"success": True, "client_id": client_id, "message": "Message sent"}
+    except Exception as e:
+        return {"error": f"Failed to send message: {str(e)}"}
+
+
+# Event management endpoints
+
+@app.get("/events/types")
+async def list_event_types():
+    """List all available event types"""
+    try:
+        event_types = [event_type.value for event_type in EventType]
+
+        return {"success": True, "event_types": event_types, "count": len(event_types)}
+    except Exception as e:
+        return {"error": f"Failed to list event types: {str(e)}"}
+
+
+@app.post("/events/publish")
+async def publish_event(event_data: Dict[str, Any]):
+    """Publish an event through the gateway"""
+    global event_router
+
+    if not event_router:
+        return {"error": "Event router not available"}
+
+    try:
+        event_type = event_data.get("event_type")
+        data = event_data.get("data", {})
+        
+        if not event_type:
+            return {"error": "event_type is required"}
+
+        event_type_enum = EventType(event_type)
+        await event_router.broadcast_to_subscribers(event_type_enum, {
+            "type": "event",
+            "event_type": event_type,
+            "data": data,
+            "timestamp": datetime.now().isoformat(),
+        })
+
+        return {
+            "success": True,
+            "event_type": event_type,
+            "message": "Event published",
+        }
+    except ValueError:
+        return {"error": f"Invalid event type: {event_type}"}
+    except Exception as e:
+        return {"error": f"Failed to publish event: {str(e)}"}
+
+
+# Legacy message endpoints
+
+@app.post("/legacy/stats")
+async def send_stats(stats_data: Dict[str, Any]):
+    """Send legacy stats message"""
+    global connection_manager
+
+    if not connection_manager:
+        return {"error": "Connection manager not available"}
+
+    try:
+        cpu_load = float(stats_data.get("cpu_load", 0.0))
+        xruns = int(stats_data.get("xruns", 0))
+        
+        count = await connection_manager.send_stats_message(cpu_load, xruns)
+        
+        return {
+            "success": True,
+            "message": "Stats sent",
+            "clients_reached": count,
+        }
+    except Exception as e:
+        return {"error": f"Failed to send stats: {str(e)}"}
+
+
+@app.post("/legacy/sys_stats")
+async def send_sys_stats(sys_stats_data: Dict[str, Any]):
+    """Send legacy system stats message"""
+    global connection_manager
+
+    if not connection_manager:
+        return {"error": "Connection manager not available"}
+
+    try:
+        mem_load = float(sys_stats_data.get("mem_load", 0.0))
+        cpu_freq = str(sys_stats_data.get("cpu_freq", "0"))
+        cpu_temp = str(sys_stats_data.get("cpu_temp", "0"))
+        
+        count = await connection_manager.send_sys_stats_message(mem_load, cpu_freq, cpu_temp)
+        
+        return {
+            "success": True,
+            "message": "System stats sent",
+            "clients_reached": count,
+        }
+    except Exception as e:
+        return {"error": f"Failed to send system stats: {str(e)}"}
+
+
+@app.post("/legacy/transport")
+async def send_transport(transport_data: Dict[str, Any]):
+    """Send legacy transport message"""
+    global connection_manager
+
+    if not connection_manager:
+        return {"error": "Connection manager not available"}
+
+    try:
+        rolling = bool(transport_data.get("rolling", False))
+        bpb = float(transport_data.get("bpb", 4.0))
+        bpm = float(transport_data.get("bpm", 120.0))
+        sync = str(transport_data.get("sync", "none"))
+        
+        count = await connection_manager.send_transport_message(rolling, bpb, bpm, sync)
+        
+        return {
+            "success": True,
+            "message": "Transport sent",
+            "clients_reached": count,
+        }
+    except Exception as e:
+        return {"error": f"Failed to send transport: {str(e)}"}
+
+
+@app.post("/legacy/loading_start")
+async def send_loading_start(loading_data: Dict[str, Any]):
+    """Send legacy loading start message"""
+    global connection_manager
+
+    if not connection_manager:
+        return {"error": "Connection manager not available"}
+
+    try:
+        empty = bool(loading_data.get("empty", True))
+        modified = bool(loading_data.get("modified", False))
+        
+        count = await connection_manager.send_loading_start_message(empty, modified)
+        
+        return {
+            "success": True,
+            "message": "Loading start sent",
+            "clients_reached": count,
+        }
+    except Exception as e:
+        return {"error": f"Failed to send loading start: {str(e)}"}
+
+
+@app.post("/legacy/loading_end")
+async def send_loading_end(loading_data: Dict[str, Any]):
+    """Send legacy loading end message"""
+    global connection_manager
+
+    if not connection_manager:
+        return {"error": "Connection manager not available"}
+
+    try:
+        snapshot_id = int(loading_data.get("snapshot_id", 0))
+        
+        count = await connection_manager.send_loading_end_message(snapshot_id)
+        
+        return {
+            "success": True,
+            "message": "Loading end sent",
+            "clients_reached": count,
+        }
+    except Exception as e:
+        return {"error": f"Failed to send loading end: {str(e)}"}
+
+
+# Health and monitoring endpoints
+
+@app.get("/health")
+async def health_check():
+    """Check health of WebSocket gateway services"""
+    global connection_manager, event_router, redis_subscriber
+
+    try:
+        health_info = {
+            "success": True,
+            "health": "healthy",
+            "services": {},
+            "timestamp": datetime.now().isoformat(),
+        }
+
+        if connection_manager:
+            stats = await connection_manager.get_stats()
+            health_info["services"]["connection_manager"] = "healthy"
+            health_info["connected_clients"] = stats.active_connections
+        else:
+            health_info["services"]["connection_manager"] = "unavailable"
+
+        if event_router:
+            health_info["services"]["event_router"] = "healthy"
+        else:
+            health_info["services"]["event_router"] = "unavailable"
+
+        if redis_subscriber:
+            health_info["services"]["redis_subscriber"] = "healthy" if redis_subscriber.is_connected() else "disconnected"
+        else:
+            health_info["services"]["redis_subscriber"] = "unavailable"
+
+        return health_info
+
+    except Exception as e:
+        return {
+            "success": False,
+            "health": "unhealthy",
+            "error": str(e),
+            "services": {
+                "connection_manager": "unknown", 
+                "event_router": "unknown", 
+                "redis_subscriber": "unknown"
+            },
+        }
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """Main WebSocket endpoint for client connections"""

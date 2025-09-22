@@ -236,9 +236,29 @@ class ConnectionManager:
 
         logger.debug(f"Broadcasted {event_type} to {len(subscribers)} clients")
 
-    async def send_to_client(self, client_id: str, message: dict) -> bool:
-        """Send message to specific client"""
-        return await self._send_to_client(client_id, message)
+    async def send_to_client(self, client_id: str, message: any) -> bool:
+        """Send a message to a specific client (supports both JSON dict and plain text)"""
+        if client_id not in self.connections:
+            logger.warning(f"Attempted to send to non-existent client: {client_id}")
+            return False
+
+        connection = self.connections[client_id]
+        try:
+            if isinstance(message, dict):
+                await connection.websocket.send_text(json.dumps(message))
+            else:
+                # Support plain text messages for legacy compatibility
+                await connection.websocket.send_text(str(message))
+
+            connection.last_activity = time.time()
+            connection.messages_sent += 1
+            self.stats.total_messages_sent += 1
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to send message to client {client_id}: {e}")
+            await self.remove_connection(client_id)
+            return False
 
     async def handle_client_message(self, client_id: str, message: dict):
         """Handle incoming message from client"""
@@ -337,34 +357,119 @@ class ConnectionManager:
         return list(self.connections.values())
 
     async def cleanup_inactive_connections(self):
-        """Clean up inactive connections"""
-
+        """Remove connections that haven't been active recently"""
         current_time = time.time()
-        inactive_clients = []
+        inactive_threshold = config.MAX_INACTIVE_TIME
 
-        for client_id, connection in self.connections.items():
-            # Check if connection is stale
-            if current_time - connection.last_seen > config.WEBSOCKET_TIMEOUT:
-                inactive_clients.append(client_id)
+        inactive_clients = [
+            client_id
+            for client_id, conn in self.connections.items()
+            if current_time - conn.last_activity > inactive_threshold
+        ]
 
-            # Check WebSocket state
-            elif connection.websocket.client_state.name not in [
-                "CONNECTED",
-                "CONNECTING",
-            ]:
-                inactive_clients.append(client_id)
-
-        # Disconnect inactive clients
         for client_id in inactive_clients:
-            await self.disconnect(client_id, code=1001, reason="Connection timeout")
-
-        # Reset message counts periodically
-        if current_time - self.last_cleanup > 60:  # Every minute
-            self.message_counts.clear()
-            self.last_cleanup = current_time
+            logger.info(f"Removing inactive client: {client_id}")
+            await self.remove_connection(client_id)
 
         if inactive_clients:
             logger.info(f"Cleaned up {len(inactive_clients)} inactive connections")
+
+    # Legacy message support methods (for compatibility with existing frontend)
+
+    async def broadcast_to_all(self, message: any) -> int:
+        """Broadcast a message to all connected clients (supports both JSON dict and plain text)"""
+        sent_count = 0
+        failed_clients = []
+
+        for client_id in list(self.connections.keys()):
+            success = await self.send_to_client(client_id, message)
+            if success:
+                sent_count += 1
+            else:
+                failed_clients.append(client_id)
+
+        # Clean up failed connections
+        for client_id in failed_clients:
+            await self.remove_connection(client_id)
+
+        logger.debug(f"Broadcast message to {sent_count} clients")
+        return sent_count
+
+    async def send_stats_message(self, cpu_load: float, xruns: int) -> int:
+        """Send stats message in legacy format: 'stats CPU_LOAD XRUNS'"""
+        message = f"stats {cpu_load:.1f} {xruns}"
+        return await self.broadcast_to_all(message)
+
+    async def send_sys_stats_message(
+        self, mem_load: float, cpu_freq: str, cpu_temp: str
+    ) -> int:
+        """Send system stats message in legacy format: 'sys_stats MEM_LOAD CPU_FREQ CPU_TEMP'"""
+        message = f"sys_stats {mem_load:.1f} {cpu_freq} {cpu_temp}"
+        return await self.broadcast_to_all(message)
+
+    async def send_ping_message(self) -> int:
+        """Send ping message to all clients"""
+        return await self.broadcast_to_all("ping")
+
+    async def send_data_ready_message(self, counter: int) -> int:
+        """Send data_ready message in legacy format: 'data_ready COUNTER'"""
+        message = f"data_ready {counter}"
+        return await self.broadcast_to_all(message)
+
+    async def send_loading_start_message(
+        self, empty: bool = True, modified: bool = False
+    ) -> int:
+        """Send loading_start message to all connected clients."""
+        message = f"loading_start {int(empty)} {int(modified)}"
+        result = await self.broadcast_to_all(message)
+        logger.info(
+            f"Sent loading_start to {result} clients: empty={empty}, modified={modified}"
+        )
+        return result
+
+    async def send_loading_end_message(self, snapshot_id: int = 0) -> int:
+        """Send loading_end message to all connected clients."""
+        message = f"loading_end {snapshot_id}"
+        result = await self.broadcast_to_all(message)
+        logger.info(
+            f"Sent loading_end to {result} clients: snapshot_id={snapshot_id}"
+        )
+        return result
+
+    async def send_transport_message(
+        self,
+        rolling: bool = False,
+        bpb: float = 4.0,
+        bpm: float = 120.0,
+        sync: str = "none",
+    ) -> int:
+        """Send transport message to all connected clients."""
+        message = f"transport {int(rolling)} {bpb} {bpm} {sync}"
+        result = await self.broadcast_to_all(message)
+        logger.info(
+            f"Sent transport to {result} clients: rolling={rolling}, bpb={bpb}, bpm={bpm}, sync={sync}"
+        )
+        return result
+
+    async def send_truebypass_message(
+        self, left: bool = False, right: bool = False
+    ) -> int:
+        """Send truebypass message to all connected clients."""
+        message = f"truebypass {int(left)} {int(right)}"
+        result = await self.broadcast_to_all(message)
+        logger.info(
+            f"Sent truebypass to {result} clients: left={left}, right={right}"
+        )
+        return result
+
+    async def send_size_message(self, width: int = 0, height: int = 0) -> int:
+        """Send size message to all connected clients."""
+        message = f"size {width} {height}"
+        result = await self.broadcast_to_all(message)
+        logger.info(
+            f"Sent size to {result} clients: width={width}, height={height}"
+        )
+        return result
 
     # Private methods
 
