@@ -5,8 +5,12 @@ FROM python:3.11-slim
 RUN apt-get update && apt-get install -y \
     build-essential \
     pkg-config \
+    libasound2-dev \
+    libasound2 \
     libjack-jackd2-dev \
+    libjack-jackd2-0 \
     liblilv-dev \
+    liblilv-0-0 \
     libserd-dev \
     libsord-dev \
     libsratom-dev \
@@ -26,8 +30,8 @@ WORKDIR /app
 # Copy requirements first for better caching
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies including multipart support for forms
+RUN pip install --no-cache-dir -r requirements.txt python-multipart
 
 # Copy source code
 COPY src/ src/
@@ -59,5 +63,5 @@ EXPOSE 8888
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8888/ping || exit 1
 
-# Run the FastAPI application
+# Run the modular FastAPI application
 CMD ["python", "-m", "uvicorn", "src.mod_ui.services.api.main:app", "--host", "0.0.0.0", "--port", "8888"]

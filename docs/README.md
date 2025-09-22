@@ -1,32 +1,46 @@
-# MOD UI - Musician Operated Device User Interface
+# MOD UI - Modern FastAPI Architecture
 
-MOD UI is the web-based user interface for the MOD Duo, a professional guitar multi-effects processor. This project provides a modern web interface for controlling audio effects, managing pedalboards, and interfacing with the MOD hardware.
+MOD UI is the web-based user interface for the MOD Duo, a professional guitar multi-effects processor. **This project has been completely modernized** with a FastAPI-based modular architecture, providing a clean, maintainable, and scalable foundation.
 
-## Features
+🎯 **Status**: **Migration Complete!** Successfully migrated from legacy Tornado to modern FastAPI architecture.
 
-- **Real-time Audio Processing**: Control LV2 audio plugins in real-time
-- **Pedalboard Management**: Create, save, and load custom effect chains
-- **Hardware Integration**: Direct communication with MOD Duo hardware
-- **Web-based Interface**: Modern responsive web UI accessible from any device
-- **Plugin Ecosystem**: Support for LADSPA, LV2, and custom MOD plugins
+## ✨ Modern Features
 
-## Architecture
+- **Modular FastAPI Architecture**: 6 specialized routers for clean separation of concerns
+- **Real-time WebSocket Communication**: Modern async WebSocket implementation
+- **Docker-First Development**: Complete containerization with dev/prod environments
+- **Auto-Generated API Documentation**: Interactive docs at `/docs`
+- **Hot Reloading**: Instant code changes during development
+- **Modern Python Patterns**: Async/await, type hints, dependency injection
 
-The MOD UI consists of several key components:
+## 🏗️ New Architecture
 
-- **Web Server**: Serves the web interface and handles HTTP requests
-- **HMI (Human-Machine Interface)**: Manages communication with the hardware
-- **Host**: Interfaces with the JACK audio system and LV2 plugins
-- **Session Manager**: Coordinates between all components
-- **WebSocket Server**: Provides real-time communication for the web interface
+The modernized MOD UI features a **modular router system**:
 
-## Technology Stack
+### **Core Routers** (`src/mod_ui/services/api/routers/`)
+- **`effects.py`** - LV2 plugin management, pedalboard operations
+- **`system.py`** - Hardware info, settings, device management  
+- **`pages.py`** - HTML page routing and templates
+- **`static.py`** - Static file serving (CSS, JS, images)
+- **`data.py`** - File operations, screenshots, recordings
+- **`websocket.py`** - Real-time WebSocket communications
 
-- **Backend**: Python with Tornado web framework
-- **Frontend**: HTML5, CSS3, JavaScript with jQuery
-- **Audio**: JACK Audio Connection Kit, LV2 plugins
-- **Communication**: WebSockets for real-time updates
-- **Hardware**: Serial communication with MOD Duo
+### **Supporting Components**
+- **FastAPI Application**: Modern ASGI web framework
+- **WebSocket Manager**: Centralized connection management
+- **Template System**: Jinja2 integration for dynamic pages
+- **Utility Functions**: Shared logic and helpers
+- **Legacy Integration**: Maintains compatibility with existing `mod/` components
+
+## 🚀 Technology Stack
+
+- **Backend**: **FastAPI** (modern Python web framework)
+- **Server**: **Uvicorn** ASGI server with hot reloading
+- **Frontend**: HTML5, CSS3, JavaScript (existing MOD UI frontend)
+- **Audio**: JACK Audio Connection Kit, LV2 plugins (unchanged)
+- **Communication**: **Modern WebSockets** with connection management
+- **Development**: **Docker** with development and production environments
+- **Documentation**: **Auto-generated** OpenAPI/Swagger docs
 
 ## Project Structure
 

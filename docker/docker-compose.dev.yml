@@ -1,6 +1,4 @@
-# Docker compose development environment for MOD UI
-
-version: '3.8'
+# Docker compose development environment for MOD UI - Modular FastAPI Architecture
 
 services:
   mod-api:
@@ -15,14 +13,23 @@ services:
       - ../src:/app/src
       - ../mod:/app/mod
       - ../modtools:/app/modtools
+      - ../utils:/app/utils
+      - ../html:/app/html
       - ../default.pedalboard:/app/default.pedalboard
-      - mod-data:/data
+      - mod-data:/app/data
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
     environment:
-      - MOD_DEV=1
-      - MOD_LOG_LEVEL=DEBUG
-      - MOD_DATA_DIR=/data
-      - MOD_DEVICE_WEBSERVER_PORT=8888
+      - MOD_DEBUG=1
+      - MOD_PORT=8888
+      - MOD_HOST=0.0.0.0
+      - MOD_DATA_DIR=/app/data
       - MOD_HTML_DIR=/app/html
+      - MOD_LOG=1
+      - PYTHONPATH=/app
+      - LD_LIBRARY_PATH=/app/utils:/app/modtools
+    devices:
+      - /dev/snd:/dev/snd
+    privileged: true
     depends_on:
       - mod-session
     networks:

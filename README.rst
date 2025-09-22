@@ -1,60 +1,111 @@
-mod-ui
-======
+MOD UI - Modern FastAPI Architecture
+====================================
 
-This is the UI for the MOD software. It's a webserver that delivers an HTML5 interface and communicates with mod-host.
-It also communicates with the MOD hardware, but does not depend on it to run.
+This is the UI for the MOD software. It's a modern **FastAPI-based webserver** that delivers an HTML5 interface and communicates with mod-host.
+It features a **modular architecture** with specialized routers, Docker support, and real-time WebSocket communication.
 
-Install
--------
+🎯 **Project Status**: **Migration Complete!** The project has been successfully migrated from legacy Tornado to modern FastAPI architecture.
 
-There are instructions for installing in a 64-bit Debian based Linux environment.
-It will work in x86, other Linux distributions and Mac, but you might need to adjust the instructions.
+✨ **Quick Start**: See ``docs/QUICK_START.md`` for immediate setup instructions.
+📋 **Project Status**: See ``docs/PROJECT_STATUS.md`` if returning after a break.
 
-The following packages will be required::
+Quick Setup
+-----------
 
-    $ sudo apt-get install virtualenv python3-pip python3-dev git build-essential libasound2-dev libjack-jackd2-dev liblilv-dev libjpeg-dev zlib1g-dev
+⚡ **Super Quick Start**::
 
-NOTE: libjack-jackd2-dev can be replaced by libjack-dev if you are using JACK1; libjpeg-dev is needed for python-pillow, at least on my system.
+    $ source venv/bin/activate
+    $ ./scripts/run-modular-docker.sh
+    # Open http://localhost:8080
 
-Start by cloning the repository::
+📋 **Prerequisites**:
+- Python 3.11+
+- Docker & Docker Compose  
+- Virtual environment already set up
 
-    $ git clone git://github.com/moddevices/mod-ui
-    $ cd mod-ui
+📦 **System Dependencies** (if needed)::
 
-Create a python virtualenv::
+    $ sudo apt-get install python3-pip python3-dev git build-essential libasound2-dev libjack-jackd2-dev liblilv-dev libjpeg-dev zlib1g-dev
 
-    $ virtualenv modui-env
-    $ source modui-env/bin/activate
+🐳 **Development Setup**::
 
-Install python requirements::
+    $ source venv/bin/activate
+    $ pip install -r requirements.txt
+    $ cd utils && make && cd ..
+    $ ./scripts/run-modular-docker.sh
 
-    $ pip3 install -r requirements.txt
+For detailed instructions, see ``docs/QUICK_START.md``.
 
-Compile libmod_utils::
+Modern Architecture
+------------------
 
-    $ make -C utils
+🏗️ **Modular FastAPI Design**:
+- **6 specialized routers**: effects, system, pages, static, data, websocket
+- **Real-time communication**: WebSocket support
+- **Modern Python**: FastAPI with async/await  
+- **Docker ready**: Development and production containers
+- **API documentation**: Auto-generated at ``/docs``
 
-Run
----
+📁 **Project Structure**::
 
-Before running the server, you need to activate your virtualenv
-(if you have just done that during installation, you can skip this step, but you'll need to do this again when you open a new shell)::
+    mod-ui/
+    ├── src/mod_ui/services/api/        # Modern FastAPI application
+    │   ├── main.py                     # Application entry point
+    │   ├── routers/                    # Modular routers (6 modules)
+    │   ├── utils/                      # Shared utilities  
+    │   └── websocket/                  # WebSocket manager
+    ├── scripts/                        # Executable scripts
+    │   ├── run-modular-docker.sh       # Development environment
+    │   ├── run-production-docker.sh    # Production deployment
+    │   └── quick-test-modular.sh       # Quick local testing
+    ├── docs/                           # Documentation
+    │   ├── PROJECT_STATUS.md           # Current project state
+    │   ├── QUICK_START.md              # Step-by-step setup
+    │   └── *.md                        # Architecture docs
+    └── docker/                         # Docker configurations
 
-    $ source modui-env/bin/activate
+Run Options  
+-----------
 
-mod-ui depends on mod-host and the JACK server running in order to make sound. So after you have JACK setup and running, in another terminal do::
+🐳 **Docker Development** (Recommended)::
 
-    $ mod-host -n -p 5555 -f 5556
+    $ ./scripts/run-modular-docker.sh
+    # Web UI: http://localhost:8080
+    # API: http://localhost:8888
 
-If you do not have mod-host, you can tell mod-ui to fake the connection to the audio backend.
-You will not get any audio, but you will be able to load plugins, make connections, save pedalboards and all that. For this, run::
+🖥️ **Local Development**::
 
-    $ export MOD_DEV_HOST=1
+    $ source venv/bin/activate
+    $ uvicorn src.mod_ui.services.api.main:app --host 0.0.0.0 --port 8888 --reload
 
-And now you are ready to start the webserver::
+🏭 **Production Deployment**::
 
-    $ export MOD_DEV_ENVIRONMENT=0
-    $ python3 ./server.py
+    $ ./scripts/run-production-docker.sh
 
-Setting the environment variables is needed when developing on a PC.
-Open your browser and point to http://localhost:8888/.
+🧪 **Quick Test**::
+
+    $ ./scripts/quick-test-modular.sh
+
+Available Endpoints
+------------------
+
+- **Web UI**: http://localhost:8080
+- **API Health**: http://localhost:8888/ping  
+- **System Info**: http://localhost:8888/system/info
+- **Effects List**: http://localhost:8888/effect/list
+- **API Docs**: http://localhost:8888/docs (Interactive)
+- **WebSocket**: ws://localhost:8888/websocket
+
+Documentation
+-----------
+
+📖 **Essential Reading**:
+- ``docs/PROJECT_STATUS.md`` - Current state and what's been accomplished
+- ``docs/QUICK_START.md`` - Step-by-step setup guide  
+- ``docs/MODULAR_ARCHITECTURE_SUMMARY.md`` - Technical architecture details
+
+🔧 **For Developers**:
+- All scripts moved to ``scripts/`` folder
+- All documentation in ``docs/`` folder
+- Modern FastAPI patterns throughout
+- Docker development workflow established
