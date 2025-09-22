@@ -76,6 +76,7 @@ class EventType(str, Enum):
     # Session events
     SESSION_STARTED = "session_started"
     SESSION_STOPPED = "session_stopped"
+    SESSION_RESET = "session_reset"
     SESSION_ERROR = "session_error"
     SESSION_TRANSPORT_CHANGED = "session_transport_changed"
     SESSION_CONFIG_CHANGED = "session_config_changed"

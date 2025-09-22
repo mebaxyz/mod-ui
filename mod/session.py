@@ -90,6 +90,11 @@ class Session(object):
         # Hardware service adapter for gradual migration
         self.hardware_adapter = get_hardware_adapter()
 
+        # Session service adapter for gradual migration to session service v2
+        from mod.session_adapter import get_session_adapter
+
+        self.session_adapter = get_session_adapter()
+
         # Used in mod-app to know when the current pedalboard changed
         self.pedalboard_changed_callback = lambda ok, bundlepath, title: None
 
@@ -583,6 +588,64 @@ class Session(object):
     def hardware_service_hmi_reset_eeprom(self):
         """Reset HMI EEPROM via hardware service."""
         return self.hardware_adapter.hmi_reset_eeprom()
+
+    # Session service methods
+
+    def get_session_status(self):
+        """Get session status from the session service."""
+        return self.session_adapter.get_session_status()
+
+    def is_session_service_healthy(self):
+        """Check if session service is healthy."""
+        return self.session_adapter.is_service_healthy()
+
+    def reset_session_service(self):
+        """Reset session via service."""
+        return self.session_adapter.reset_session()
+
+    def get_session_stats(self):
+        """Get session performance statistics."""
+        return self.session_adapter.get_session_stats()
+
+    def session_service_transport_play(self):
+        """Start transport playback via service."""
+        return self.session_adapter.transport_play()
+
+    def session_service_transport_stop(self):
+        """Stop transport playback via service."""
+        return self.session_adapter.transport_stop()
+
+    def session_service_transport_pause(self):
+        """Pause transport playback via service."""
+        return self.session_adapter.transport_pause()
+
+    def session_service_set_tempo(self, bpm):
+        """Set session tempo via service."""
+        return self.session_adapter.set_tempo(bpm)
+
+    def session_service_get_tempo(self):
+        """Get current session tempo."""
+        return self.session_adapter.get_tempo()
+
+    def session_service_list_pedalboards(self):
+        """List all available pedalboards via service."""
+        return self.session_adapter.list_pedalboards()
+
+    def session_service_get_current_pedalboard(self):
+        """Get currently loaded pedalboard via service."""
+        return self.session_adapter.get_current_pedalboard()
+
+    def session_service_create_pedalboard(self, title, description=None):
+        """Create a new pedalboard via service."""
+        return self.session_adapter.create_pedalboard(title, description)
+
+    def session_service_save_pedalboard(self, title=None, bundle_path=None):
+        """Save current pedalboard via service."""
+        return self.session_adapter.save_pedalboard(title, bundle_path)
+
+    def session_service_wait_for_service(self, timeout=10.0):
+        """Wait for session service to become available."""
+        return self.session_adapter.wait_for_service(timeout)
 
     # END host commands
 

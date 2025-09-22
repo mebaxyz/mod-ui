@@ -151,6 +151,40 @@ services:
       retries: 3
       start_period: 10s
 
+  mod-websocket-gateway:
+    build:
+      context: ..
+      dockerfile: docker/websocket_gateway/Dockerfile
+    container_name: mod-ui-websocket-gateway
+    restart: unless-stopped
+    ports:
+      - "8081:8081"  # WebSocket Gateway service port
+    volumes:
+      - ../src:/app/src
+    environment:
+      - DEBUG=true
+      - WEBSOCKET_GATEWAY_HOST=0.0.0.0
+      - WEBSOCKET_GATEWAY_PORT=8081
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - REDIS_CHANNEL_PREFIX=mod_ui
+      - MAX_CONNECTIONS=100
+      - WEBSOCKET_TIMEOUT=300
+      - MESSAGE_QUEUE_SIZE=1000
+      - LOG_LEVEL=INFO
+      - PYTHONPATH=/app/src:/app
+    depends_on:
+      - redis
+    networks:
+      - mod-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
   redis:
     image: redis:7-alpine
     container_name: mod-ui-redis

@@ -191,11 +191,16 @@ class StateManagerService:
             self.session_state.status = SessionStatus.SAVING_PEDALBOARD
             self.session_state.update_activity()
 
-            # Use provided path or current pedalboard path
+            # Use provided path or current pedalboard path, or the pedalboard's own path
             if bundle_path is None:
-                if self.session_state.current_pedalboard is None:
-                    raise ValueError("No current pedalboard to save")
-                bundle_path = self.session_state.current_pedalboard.bundle_path
+                if pedalboard.bundle_path:
+                    bundle_path = pedalboard.bundle_path
+                elif self.session_state.current_pedalboard is not None:
+                    bundle_path = self.session_state.current_pedalboard.bundle_path
+                else:
+                    raise ValueError(
+                        "No bundle path specified and no current pedalboard"
+                    )
 
             # Ensure bundle path is in our pedalboards directory
             bundle_path = str(self.pedalboards_dir / Path(bundle_path).name)
@@ -548,6 +553,54 @@ class StateManagerService:
             await self.event_publisher.publish(event)
 
         self.logger.debug(f"Buffer size changed to: {buffer_size} samples")
+
+    async def reset_session(
+        self, new_session_state: Optional[SessionState] = None
+    ) -> None:
+        """Reset session to initial state"""
+        try:
+            # Use provided session state or create new one
+            if new_session_state is None:
+                new_session_state = SessionState()
+
+            # Preserve some settings from current session
+            if self.session_state:
+                new_session_state.sample_rate = self.session_state.sample_rate
+                new_session_state.buffer_size = self.session_state.buffer_size
+                new_session_state.audio_driver = self.session_state.audio_driver
+                new_session_state.tempo_bpm = self.session_state.tempo_bpm
+
+            # Set new session state
+            old_session_id = (
+                self.session_state.session_id if self.session_state else None
+            )
+            self.session_state = new_session_state
+            self.session_state.status = SessionStatus.READY
+            self.session_state.update_activity()
+
+            # Publish session reset event
+            if self.event_publisher:
+                from ..models.events import EventType, SessionEvent
+
+                event = SessionEvent(
+                    event_type=EventType.SESSION_RESET,
+                    source_service="state_manager",
+                    session_id=self.session_state.session_id,
+                    data={
+                        "old_session_id": old_session_id,
+                        "new_session_id": self.session_state.session_id,
+                    },
+                )
+                await self.event_publisher.publish(event)
+
+            self.logger.info(
+                f"Session reset successfully: {self.session_state.session_id}"
+            )
+
+        except Exception as e:
+            self.logger.error(f"Failed to reset session: {e}")
+            self.session_state.set_error(f"Failed to reset session: {e}")
+            raise
 
     # Private helper methods
 

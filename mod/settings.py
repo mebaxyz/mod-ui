@@ -157,12 +157,13 @@ USING_256_FRAMES_FILE = "/data/using-256-frames"
 HARDWARE_SERVICE_URL = os.environ.get(
     "MOD_HARDWARE_SERVICE_URL", "http://localhost:8003"
 )
-REDIS_HOST = os.environ.get("MOD_REDIS_HOST", "localhost")
-REDIS_PORT = int(os.environ.get("MOD_REDIS_PORT", 6379))
 
-# Hardware service configuration
-HARDWARE_SERVICE_URL = os.environ.get(
-    "MOD_HARDWARE_SERVICE_URL", "http://localhost:8003"
+# Session service configuration
+MOD_SESSION_SERVICE_URL = os.environ.get(
+    "MOD_SESSION_SERVICE_URL", "http://localhost:8002"
 )
+MOD_SESSION_SERVICE_TIMEOUT = int(os.environ.get("MOD_SESSION_SERVICE_TIMEOUT", 10))
+
+# Redis configuration
 REDIS_HOST = os.environ.get("MOD_REDIS_HOST", "localhost")
 REDIS_PORT = int(os.environ.get("MOD_REDIS_PORT", 6379))
