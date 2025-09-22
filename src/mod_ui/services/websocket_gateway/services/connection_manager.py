@@ -431,9 +431,7 @@ class ConnectionManager:
         """Send loading_end message to all connected clients."""
         message = f"loading_end {snapshot_id}"
         result = await self.broadcast_to_all(message)
-        logger.info(
-            f"Sent loading_end to {result} clients: snapshot_id={snapshot_id}"
-        )
+        logger.info(f"Sent loading_end to {result} clients: snapshot_id={snapshot_id}")
         return result
 
     async def send_transport_message(
@@ -457,18 +455,14 @@ class ConnectionManager:
         """Send truebypass message to all connected clients."""
         message = f"truebypass {int(left)} {int(right)}"
         result = await self.broadcast_to_all(message)
-        logger.info(
-            f"Sent truebypass to {result} clients: left={left}, right={right}"
-        )
+        logger.info(f"Sent truebypass to {result} clients: left={left}, right={right}")
         return result
 
     async def send_size_message(self, width: int = 0, height: int = 0) -> int:
         """Send size message to all connected clients."""
         message = f"size {width} {height}"
         result = await self.broadcast_to_all(message)
-        logger.info(
-            f"Sent size to {result} clients: width={width}, height={height}"
-        )
+        logger.info(f"Sent size to {result} clients: width={width}, height={height}")
         return result
 
     # Private methods

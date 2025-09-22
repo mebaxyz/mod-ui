@@ -6,7 +6,6 @@ built with FastAPI and featuring async/await throughout.
 """
 
 import asyncio
-
 import logging
 import os
 import signal
@@ -15,7 +14,6 @@ from typing import Optional
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
 
 from .routers import pedalboard_router, session_router
 from .services.state_manager import StateManagerService
@@ -58,13 +56,9 @@ async def lifespan(app: FastAPI):
         await state_manager.initialize()
         logger.info("State manager initialized")
 
-
-
-
         # Store services in app state for access from routers
         app.state.event_bus = event_bus
         app.state.state_manager = state_manager
-
 
         logger.info("Session Service v2 startup complete")
 
@@ -77,7 +71,7 @@ async def lifespan(app: FastAPI):
     finally:
         logger.info("Shutting down Session Service v2...")
 
-                # Close services
+        # Close services
 
         # Close state manager
         if state_manager:
@@ -125,10 +119,10 @@ async def status():
     global state_manager, event_bus
 
     status_info = {
-        "service": "session-v2", 
-        "version": "2.0.0", 
+        "service": "session-v2",
+        "version": "2.0.0",
         "status": "running",
-        "websocket_note": "Real-time WebSocket communication handled by dedicated WebSocket Gateway Service"
+        "websocket_note": "Real-time WebSocket communication handled by dedicated WebSocket Gateway Service",
     }
 
     if state_manager:

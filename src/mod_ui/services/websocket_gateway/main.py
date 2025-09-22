@@ -215,21 +215,26 @@ async def broadcast_to_subscribers(event_type: str, message: Dict[str, Any]):
 
 # Client management endpoints (from Session Service v2 realtime.py)
 
+
 @app.get("/clients")
 async def list_connected_clients():
     """List all connected WebSocket clients"""
     global connection_manager
 
     if not connection_manager:
-        return {"error": "Connection manager not available"} 
+        return {"error": "Connection manager not available"}
 
     try:
         connections = await connection_manager.get_connection_info()
         clients = [
             {
                 "client_id": conn["client_id"],
-                "connected_at": datetime.fromtimestamp(conn["connected_at"]).isoformat(),
-                "last_activity": datetime.fromtimestamp(conn["last_activity"]).isoformat(),
+                "connected_at": datetime.fromtimestamp(
+                    conn["connected_at"]
+                ).isoformat(),
+                "last_activity": datetime.fromtimestamp(
+                    conn["last_activity"]
+                ).isoformat(),
                 "messages_sent": conn["messages_sent"],
                 "messages_received": conn["messages_received"],
                 "subscription_count": len(conn.get("subscriptions", [])),
@@ -256,7 +261,9 @@ async def get_client_info(client_id: str):
 
     try:
         connections = await connection_manager.get_connection_info()
-        client_info = next((conn for conn in connections if conn["client_id"] == client_id), None)
+        client_info = next(
+            (conn for conn in connections if conn["client_id"] == client_id), None
+        )
 
         if client_info is None:
             return {"error": "Client not found", "status_code": 404}
@@ -265,8 +272,12 @@ async def get_client_info(client_id: str):
             "success": True,
             "client": {
                 "client_id": client_id,
-                "connected_at": datetime.fromtimestamp(client_info["connected_at"]).isoformat(),
-                "last_activity": datetime.fromtimestamp(client_info["last_activity"]).isoformat(),
+                "connected_at": datetime.fromtimestamp(
+                    client_info["connected_at"]
+                ).isoformat(),
+                "last_activity": datetime.fromtimestamp(
+                    client_info["last_activity"]
+                ).isoformat(),
                 "messages_sent": client_info["messages_sent"],
                 "messages_received": client_info["messages_received"],
                 "subscriptions": client_info.get("subscriptions", []),
@@ -326,6 +337,7 @@ async def send_message_to_client(client_id: str, message: Dict[str, Any]):
 
 # Event management endpoints
 
+
 @app.get("/events/types")
 async def list_event_types():
     """List all available event types"""
@@ -348,17 +360,20 @@ async def publish_event(event_data: Dict[str, Any]):
     try:
         event_type = event_data.get("event_type")
         data = event_data.get("data", {})
-        
+
         if not event_type:
             return {"error": "event_type is required"}
 
         event_type_enum = EventType(event_type)
-        await event_router.broadcast_to_subscribers(event_type_enum, {
-            "type": "event",
-            "event_type": event_type,
-            "data": data,
-            "timestamp": datetime.now().isoformat(),
-        })
+        await event_router.broadcast_to_subscribers(
+            event_type_enum,
+            {
+                "type": "event",
+                "event_type": event_type,
+                "data": data,
+                "timestamp": datetime.now().isoformat(),
+            },
+        )
 
         return {
             "success": True,
@@ -373,6 +388,7 @@ async def publish_event(event_data: Dict[str, Any]):
 
 # Legacy message endpoints
 
+
 @app.post("/legacy/stats")
 async def send_stats(stats_data: Dict[str, Any]):
     """Send legacy stats message"""
@@ -384,9 +400,9 @@ async def send_stats(stats_data: Dict[str, Any]):
     try:
         cpu_load = float(stats_data.get("cpu_load", 0.0))
         xruns = int(stats_data.get("xruns", 0))
-        
+
         count = await connection_manager.send_stats_message(cpu_load, xruns)
-        
+
         return {
             "success": True,
             "message": "Stats sent",
@@ -408,9 +424,11 @@ async def send_sys_stats(sys_stats_data: Dict[str, Any]):
         mem_load = float(sys_stats_data.get("mem_load", 0.0))
         cpu_freq = str(sys_stats_data.get("cpu_freq", "0"))
         cpu_temp = str(sys_stats_data.get("cpu_temp", "0"))
-        
-        count = await connection_manager.send_sys_stats_message(mem_load, cpu_freq, cpu_temp)
-        
+
+        count = await connection_manager.send_sys_stats_message(
+            mem_load, cpu_freq, cpu_temp
+        )
+
         return {
             "success": True,
             "message": "System stats sent",
@@ -433,9 +451,9 @@ async def send_transport(transport_data: Dict[str, Any]):
         bpb = float(transport_data.get("bpb", 4.0))
         bpm = float(transport_data.get("bpm", 120.0))
         sync = str(transport_data.get("sync", "none"))
-        
+
         count = await connection_manager.send_transport_message(rolling, bpb, bpm, sync)
-        
+
         return {
             "success": True,
             "message": "Transport sent",
@@ -456,9 +474,9 @@ async def send_loading_start(loading_data: Dict[str, Any]):
     try:
         empty = bool(loading_data.get("empty", True))
         modified = bool(loading_data.get("modified", False))
-        
+
         count = await connection_manager.send_loading_start_message(empty, modified)
-        
+
         return {
             "success": True,
             "message": "Loading start sent",
@@ -478,9 +496,9 @@ async def send_loading_end(loading_data: Dict[str, Any]):
 
     try:
         snapshot_id = int(loading_data.get("snapshot_id", 0))
-        
+
         count = await connection_manager.send_loading_end_message(snapshot_id)
-        
+
         return {
             "success": True,
             "message": "Loading end sent",
@@ -491,6 +509,7 @@ async def send_loading_end(loading_data: Dict[str, Any]):
 
 
 # Health and monitoring endpoints
+
 
 @app.get("/health")
 async def health_check():
@@ -518,7 +537,9 @@ async def health_check():
             health_info["services"]["event_router"] = "unavailable"
 
         if redis_subscriber:
-            health_info["services"]["redis_subscriber"] = "healthy" if redis_subscriber.is_connected() else "disconnected"
+            health_info["services"]["redis_subscriber"] = (
+                "healthy" if redis_subscriber.is_connected() else "disconnected"
+            )
         else:
             health_info["services"]["redis_subscriber"] = "unavailable"
 
@@ -530,9 +551,9 @@ async def health_check():
             "health": "unhealthy",
             "error": str(e),
             "services": {
-                "connection_manager": "unknown", 
-                "event_router": "unknown", 
-                "redis_subscriber": "unknown"
+                "connection_manager": "unknown",
+                "event_router": "unknown",
+                "redis_subscriber": "unknown",
             },
         }
 

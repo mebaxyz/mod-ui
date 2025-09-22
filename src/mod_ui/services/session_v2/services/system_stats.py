@@ -131,7 +131,7 @@ class SystemStatsService:
                     "type": "stats",
                     "cpu_load": cpu_load,
                     "xruns": xruns,
-                }
+                },
             )
             await self.event_bus.publish(event)
 
@@ -165,7 +165,7 @@ class SystemStatsService:
                     "memory_percent": mem_usage,
                     "cpu_frequency": cpu_freq,
                     "cpu_temperature": cpu_temp,
-                }
+                },
             )
             await self.event_bus.publish(event)
 
@@ -243,7 +243,7 @@ class SystemStatsService:
             data={
                 "type": "data_ready",
                 "counter": self.data_ready_counter,
-            }
+            },
         )
         await self.event_bus.publish(event)
         self.logger.debug(f"Published data_ready event: {self.data_ready_counter}")
@@ -254,7 +254,7 @@ class SystemStatsService:
             "system_stats_service",
             data={
                 "type": "ping",
-            }
+            },
         )
         await self.event_bus.publish(event)
         self.logger.debug("Published ping event")
