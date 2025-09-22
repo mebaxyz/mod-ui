@@ -884,6 +884,21 @@ async def get_plugin_info_endpoint(uri: str):
         raise HTTPException(status_code=404, detail=f"Plugin not found: {uri}")
 
 
+# Snapshot Management
+@app.get("/snapshot/name")
+async def get_snapshot_name(id: int = 0):
+    """Get snapshot name by ID - used during loading sequence"""
+    try:
+        # For now, return default names based on ID
+        if id == 0:
+            return {"ok": True, "name": "Default"}
+        else:
+            return {"ok": True, "name": f"Snapshot {id}"}
+    except Exception as e:
+        logger.error(f"Error getting snapshot name for ID {id}: {e}")
+        return {"ok": False, "name": "Unknown"}
+
+
 # Favorites Management
 @app.post("/favorites/add")
 async def add_favorite(uri: str):
@@ -974,6 +989,10 @@ async def websocket_endpoint(websocket: WebSocket):
         await websocket.accept()
         logger.info("WebSocket connection accepted")
         await manager.connect(websocket)
+        
+        # Send initialization sequence that frontend expects
+        await send_websocket_initialization(websocket)
+        
     except Exception as e:
         logger.error(f"Error accepting WebSocket connection: {e}")
         await websocket.close(code=1000, reason="Connection error")
@@ -1018,6 +1037,23 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
         manager.disconnect(websocket)
+
+
+async def send_websocket_initialization(websocket: WebSocket):
+    """Send initialization sequence that frontend expects"""
+    try:
+        # Send loading_start with default parameters (empty=0, modified=0)
+        # This tells the frontend to start the loading process
+        await websocket.send_text("loading_start 0 0")
+        logger.debug("Sent loading_start")
+        
+        # Send loading_end with snapshot ID 0 (default/empty pedalboard)
+        # This tells the frontend the loading is complete
+        await websocket.send_text("loading_end 0")
+        logger.debug("Sent loading_end")
+        
+    except Exception as e:
+        logger.error(f"Error sending WebSocket initialization: {e}")
 
 
 async def handle_websocket_command(websocket: WebSocket, cmd: str, data: str):
