@@ -26,8 +26,6 @@ from .routers import (
     system_router,
 )
 from .routers.static import get_static_mounts
-from .websocket import manager
-from .websocket import router as websocket_router
 
 # Configuration
 HTML_DIR = os.environ.get("MOD_HTML_DIR", "/app/html")
@@ -70,10 +68,9 @@ app.include_router(system_router, prefix="", tags=["system"])
 app.include_router(pages_router, prefix="", tags=["pages"])
 app.include_router(static_router, prefix="", tags=["static"])
 app.include_router(data_router, prefix="", tags=["data"])
-app.include_router(websocket_router, prefix="", tags=["websocket"])
 
 logger.info("FastAPI application initialized with modular architecture")
-logger.info(f"Active routers: effects, system, pages, static, data, websocket")
+logger.info(f"Active routers: effects, system, pages, static, data")
 logger.info(f"HTML directory: {HTML_DIR}")
 logger.info(f"Server port: {DEVICE_WEBSERVER_PORT}")
 
@@ -118,29 +115,20 @@ except Exception as e:
 # Store global state for routers
 app.state.html_dir = HTML_DIR
 app.state.session_available = SESSION_AVAILABLE
-app.state.websocket_manager = manager
 
 
 @app.on_event("startup")
 async def startup_event():
     """Application startup event"""
     logger.info("🚀 MOD UI FastAPI application started")
-    logger.info(
-        f"📡 WebSocket manager initialized with {len(manager.active_connections)} connections"
-    )
+    logger.info("📡 WebSocket functionality handled by Session Service v2")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Application shutdown event"""
     logger.info("🛑 MOD UI FastAPI application shutting down")
-
-    # Close all WebSocket connections
-    for connection in manager.active_connections.copy():
-        try:
-            await connection.close()
-        except Exception as e:
-            logger.error(f"Error closing WebSocket connection: {e}")
+    logger.info("📡 WebSocket connections handled by Session Service v2")
 
 
 if __name__ == "__main__":

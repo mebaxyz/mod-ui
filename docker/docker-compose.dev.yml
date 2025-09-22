@@ -31,7 +31,7 @@ services:
       - /dev/snd:/dev/snd
     privileged: true
     depends_on:
-      - mod-session
+      - mod-session-v2  # Modern FastAPI-based session service
     networks:
       - mod-network
     healthcheck:
@@ -55,23 +55,34 @@ services:
     networks:
       - mod-network
 
-  mod-session:
+  mod-session-v2:
     build:
       context: ..
-      dockerfile: docker/session/Dockerfile
-    container_name: mod-ui-session
+      dockerfile: docker/session_v2/Dockerfile
+    container_name: mod-ui-session-v2
     restart: unless-stopped
     ports:
-      - "5555:5555"  # Session service port
+      - "8002:8002"  # Session service v2 port
     volumes:
+      - ../src:/app/src
       - ../mod:/app/mod
-      - mod-data:/data
+      - ../modtools:/app/modtools
+      - mod-data:/app/data
     environment:
-      - MOD_DEV=1
-      - MOD_LOG_LEVEL=DEBUG
-      - MOD_DATA_DIR=/data
+      - MOD_DEV_ENVIRONMENT=1
+      - MOD_LOG=1
+      - SESSION_SERVICE_HOST=0.0.0.0
+      - SESSION_SERVICE_PORT=8002
+      - EVENT_BUS_TYPE=inmemory
+      - PYTHONPATH=/app/src:/app
     networks:
       - mod-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   mod-hardware:
     build:
@@ -88,8 +99,6 @@ services:
       - MOD_DEV=1
       - MOD_LOG_LEVEL=DEBUG
       - MOD_DATA_DIR=/data
-    depends_on:
-      - mod-session
     networks:
       - mod-network
 

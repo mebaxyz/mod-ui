@@ -1,0 +1,129 @@
+version: '3.8'
+
+services:
+  # Main API service (existing)
+  mod-ui-api:
+    build:
+      context: ..
+      dockerfile: docker/api/Dockerfile
+    ports:
+      - "8001:8001"
+    volumes:
+      - ../:/app
+      - /tmp/.X11-unix:/tmp/.X11-unix
+    environment:
+      - DISPLAY=${DISPLAY}
+      - MOD_DEVICE_WEBSERVER_PORT=8001
+      - MOD_LOG=1
+      - MOD_DEV_ENVIRONMENT=1
+    depends_on:
+      - mod-ui-hardware
+    networks:
+      - mod-network
+    restart: unless-stopped
+
+  # Web interface service (existing)
+  mod-ui-web:
+    build:
+      context: ..
+      dockerfile: docker/web/Dockerfile
+    ports:
+      - "8000:80"
+    volumes:
+      - ../html:/usr/share/nginx/html
+    networks:
+      - mod-network
+    restart: unless-stopped
+
+  # Hardware service (existing, fixed)
+  mod-ui-hardware:
+    build:
+      context: ..
+      dockerfile: docker/hardware/Dockerfile
+    privileged: true
+    volumes:
+      - ../:/app
+      - /dev:/dev
+      - /sys:/sys
+    environment:
+      - MOD_LOG=1
+      - MOD_DEV_ENVIRONMENT=1
+    networks:
+      - mod-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import mod.control_chain; print('OK')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Session Service v2 (NEW - Modern FastAPI replacement)
+  mod-ui-session-v2:
+    build:
+      context: ..
+      dockerfile: docker/session_v2/Dockerfile
+    ports:
+      - "8002:8002"
+    volumes:
+      - ../:/app
+      - session_data:/app/data
+    environment:
+      - MOD_LOG=1
+      - MOD_DEV_ENVIRONMENT=1
+      - PYTHONPATH=/app/src:/app
+      - SESSION_SERVICE_HOST=0.0.0.0
+      - SESSION_SERVICE_PORT=8002
+      - EVENT_BUS_TYPE=inmemory  # or 'redis' for distributed setup
+      - REDIS_URL=redis://redis:6379/0  # if using Redis event bus
+    networks:
+      - mod-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      - mod-ui-api
+      - mod-ui-hardware
+
+  # Redis service (optional, for Redis event bus)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - mod-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    profiles:
+      - redis  # Only start with --profile redis
+
+  # Development utilities
+  redis-cli:
+    image: redis:7-alpine
+    networks:
+      - mod-network
+    profiles:
+      - utils
+    entrypoint: redis-cli -h redis
+
+networks:
+  mod-network:
+    driver: bridge
+    name: mod-network
+
+volumes:
+  session_data:
+    name: mod-session-data
+  redis_data:
+    name: mod-redis-data
+
+# Usage examples:
+#   Default stack: docker-compose up
+#   With Redis:    docker-compose --profile redis up  
+#   With utils:    docker-compose --profile utils --profile redis up redis-cli

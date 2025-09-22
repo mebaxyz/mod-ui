@@ -7,23 +7,25 @@ the MOD Duo device via serial and HMI protocols.
 """
 
 import asyncio
+import json
 import logging
 import signal
 import sys
-from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
 from datetime import datetime
-import json
+from typing import Any, Dict, List, Optional
+
 import serial
 import serial.tools.list_ports
 
+from mod.control_chain import ControlChainDeviceListener
 from mod.hmi import HMI
-from mod.control_chain import ControlChain
 
 
 @dataclass
 class HardwareState:
     """Current hardware state"""
+
     device_connected: bool = False
     device_type: Optional[str] = None
     serial_port: Optional[str] = None
@@ -35,155 +37,161 @@ class HardwareState:
 class HardwareService:
     """
     Modern async hardware service managing MOD device communication
-    
+
     This service handles:
     - Serial communication with MOD devices
     - HMI (Human Machine Interface) protocol
     - Control Chain device management
     - Hardware monitoring and diagnostics
     """
-    
+
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.hardware_state = HardwareState()
         self.hmi: Optional[HMI] = None
-        self.control_chain: Optional[ControlChain] = None
+        self.control_chain: Optional[ControlChainDeviceListener] = None
         self.serial_connection: Optional[serial.Serial] = None
         self.running = False
-        
+
     async def initialize(self):
         """Initialize the hardware service"""
         try:
             self.logger.info("Initializing hardware service...")
-            
+
             # Detect MOD devices
             await self._detect_devices()
-            
+
             # Initialize HMI if device found
             if self.hardware_state.device_connected:
                 await self._initialize_hmi()
                 await self._initialize_control_chain()
-            
+
             self.logger.info("Hardware service initialized successfully")
-            
+
         except Exception as e:
             self.logger.error(f"Failed to initialize hardware service: {e}")
             raise
-    
+
     async def _detect_devices(self):
         """Detect connected MOD devices"""
         try:
             self.logger.info("Scanning for MOD devices...")
-            
+
             # List all available serial ports
             ports = serial.tools.list_ports.comports()
-            
+
             for port in ports:
                 self.logger.debug(f"Checking port: {port.device}")
-                
+
                 # Check for MOD device signatures
                 if self._is_mod_device(port):
                     self.hardware_state.device_connected = True
                     self.hardware_state.serial_port = port.device
                     self.hardware_state.device_type = self._detect_device_type(port)
-                    self.logger.info(f"Found MOD device: {self.hardware_state.device_type} on {port.device}")
+                    self.logger.info(
+                        f"Found MOD device: {self.hardware_state.device_type} on {port.device}"
+                    )
                     break
-            
+
             if not self.hardware_state.device_connected:
                 self.logger.warning("No MOD devices detected")
-                
+
         except Exception as e:
             self.logger.error(f"Device detection failed: {e}")
-    
+
     def _is_mod_device(self, port) -> bool:
         """Check if the port is a MOD device"""
         try:
             # Check vendor ID and product ID for MOD devices
-            if hasattr(port, 'vid') and hasattr(port, 'pid'):
+            if hasattr(port, "vid") and hasattr(port, "pid"):
                 # MOD Devices vendor/product IDs (these would be the actual values)
                 mod_devices = [
-                    (0x0525, 0xa4a2),  # Example MOD Duo
-                    (0x0525, 0xa4a3),  # Example MOD Duo X
+                    (0x0525, 0xA4A2),  # Example MOD Duo
+                    (0x0525, 0xA4A3),  # Example MOD Duo X
                 ]
-                
+
                 for vid, pid in mod_devices:
                     if port.vid == vid and port.pid == pid:
                         return True
-            
+
             # Alternative: Check device description
-            if hasattr(port, 'description'):
-                mod_descriptions = ['MOD', 'Audio Injector']
+            if hasattr(port, "description"):
+                mod_descriptions = ["MOD", "Audio Injector"]
                 for desc in mod_descriptions:
                     if desc.lower() in port.description.lower():
                         return True
-                        
+
         except Exception as e:
             self.logger.debug(f"Error checking device {port.device}: {e}")
-        
+
         return False
-    
+
     def _detect_device_type(self, port) -> str:
         """Detect specific MOD device type"""
         try:
-            if hasattr(port, 'pid'):
-                if port.pid == 0xa4a2:
+            if hasattr(port, "pid"):
+                if port.pid == 0xA4A2:
                     return "MOD Duo"
-                elif port.pid == 0xa4a3:
+                elif port.pid == 0xA4A3:
                     return "MOD Duo X"
-            
+
             # Fallback to generic
             return "MOD Device"
-            
+
         except Exception:
             return "Unknown MOD Device"
-    
+
     async def _initialize_hmi(self):
         """Initialize HMI communication"""
         try:
             if not self.hardware_state.serial_port:
                 raise ValueError("No serial port available for HMI")
-            
+
             self.logger.info("Initializing HMI communication...")
-            
+
             # Initialize HMI with callback
             self.hmi = HMI(
-                host_callback=self._hmi_callback,
-                msg_callback=self._msg_callback
+                host_callback=self._hmi_callback, msg_callback=self._msg_callback
             )
-            
+
             # Start HMI in executor for backward compatibility
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, self.hmi.start)
-            
+
             # Get HMI version
             self.hardware_state.hmi_version = await self._get_hmi_version()
-            
-            self.logger.info(f"HMI initialized, version: {self.hardware_state.hmi_version}")
-            
+
+            self.logger.info(
+                f"HMI initialized, version: {self.hardware_state.hmi_version}"
+            )
+
         except Exception as e:
             self.logger.error(f"Failed to initialize HMI: {e}")
             raise
-    
+
     async def _initialize_control_chain(self):
         """Initialize Control Chain communication"""
         try:
             self.logger.info("Initializing Control Chain...")
-            
-            self.control_chain = ControlChain()
-            
-            # Start Control Chain
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, self.control_chain.start)
-            
+
+            # Initialize ControlChainDeviceListener with callbacks
+            self.control_chain = ControlChainDeviceListener(
+                hw_added_cb=self._hw_added_callback,
+                hw_removed_cb=self._hw_removed_callback,
+                hw_connected_cb=self._hw_connected_callback,
+                hw_disconnected_cb=self._hw_disconnected_callback,
+                act_added_cb=self._act_added_callback,
+            )
+
             # Scan for Control Chain devices
             await self._scan_control_chain_devices()
-            
+
             self.logger.info("Control Chain initialized")
-            
+
         except Exception as e:
             self.logger.error(f"Failed to initialize Control Chain: {e}")
             # Control Chain is optional, don't raise
-    
+
     async def _get_hmi_version(self) -> Optional[str]:
         """Get HMI version from device"""
         try:
@@ -191,53 +199,79 @@ class HardwareService:
                 # Request version info from HMI
                 loop = asyncio.get_event_loop()
                 version_info = await loop.run_in_executor(
-                    None, 
-                    lambda: getattr(self.hmi, 'get_version', lambda: None)()
+                    None, lambda: getattr(self.hmi, "get_version", lambda: None)()
                 )
                 return version_info
         except Exception as e:
             self.logger.error(f"Failed to get HMI version: {e}")
-        
+
         return None
-    
+
     async def _scan_control_chain_devices(self):
         """Scan for connected Control Chain devices"""
         try:
             if not self.control_chain:
                 return
-            
+
             self.logger.info("Scanning for Control Chain devices...")
-            
-            # Get list of Control Chain devices
+
+            # ControlChainDeviceListener handles device discovery automatically
+            # Just wait for it to initialize
             loop = asyncio.get_event_loop()
-            devices = await loop.run_in_executor(
-                None,
-                lambda: getattr(self.control_chain, 'get_devices', lambda: [])()
+            await loop.run_in_executor(
+                None, lambda: self.control_chain.wait_initialized(lambda: None)
             )
-            
-            self.hardware_state.control_chain_devices = devices
-            self.logger.info(f"Found {len(devices)} Control Chain devices")
-            
+
+            # Devices are reported via callbacks, so check the internal state
+            device_count = len(getattr(self.control_chain, "hw_versions", {}))
+            self.logger.info(f"Control Chain initialized with {device_count} devices")
+
         except Exception as e:
             self.logger.error(f"Failed to scan Control Chain devices: {e}")
-    
+
     def _hmi_callback(self, msg_type: str, data: Any):
         """Handle HMI messages"""
         self.logger.debug(f"HMI message: {msg_type} - {data}")
         self.hardware_state.last_heartbeat = datetime.now()
-        
+
         # Process different HMI message types
         if msg_type == "heartbeat":
             self.hardware_state.device_connected = True
         elif msg_type == "disconnect":
             self.hardware_state.device_connected = False
-        
+
         # TODO: Broadcast to session service or API clients
-    
+
     def _msg_callback(self, msg: str):
         """Handle general hardware messages"""
         self.logger.debug(f"Hardware message: {msg}")
-    
+
+    def _hw_added_callback(self, dev_id, dev_uri, label, labelsuffix, version):
+        """Handle Control Chain hardware added"""
+        self.logger.info(
+            f"Control Chain device added: {label}{labelsuffix} (v{version}) - {dev_uri}"
+        )
+
+    def _hw_removed_callback(self, dev_id, dev_uri, label, version):
+        """Handle Control Chain hardware removed"""
+        self.logger.info(
+            f"Control Chain device removed: {label} (v{version}) - {dev_uri}"
+        )
+
+    def _hw_connected_callback(self, label, version):
+        """Handle Control Chain hardware connected"""
+        self.logger.info(f"Control Chain device connected: {label} (v{version})")
+
+    def _hw_disconnected_callback(self, label, version):
+        """Handle Control Chain hardware disconnected"""
+        self.logger.info(f"Control Chain device disconnected: {label} (v{version})")
+
+    def _act_added_callback(self, dev_id, actuator_id, metadata):
+        """Handle Control Chain actuator added"""
+        self.logger.debug(
+            f"Control Chain actuator added: {metadata['name']} - {metadata['uri']}"
+        )
+
     async def get_hardware_state(self) -> Dict[str, Any]:
         """Get current hardware state"""
         return {
@@ -246,117 +280,127 @@ class HardwareService:
             "serial_port": self.hardware_state.serial_port,
             "hmi_version": self.hardware_state.hmi_version,
             "control_chain_devices": self.hardware_state.control_chain_devices,
-            "last_heartbeat": self.hardware_state.last_heartbeat.isoformat()
+            "last_heartbeat": self.hardware_state.last_heartbeat.isoformat(),
         }
-    
+
     async def send_hmi_command(self, command: str, data: Any = None) -> Dict[str, Any]:
         """Send command to HMI"""
         try:
             if not self.hmi or not self.hardware_state.device_connected:
                 raise ValueError("HMI not available")
-            
+
             self.logger.debug(f"Sending HMI command: {command} - {data}")
-            
+
             # Send command via HMI
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
                 None,
-                lambda: getattr(self.hmi, 'send_command', lambda c, d: None)(command, data)
+                lambda: getattr(self.hmi, "send_command", lambda c, d: None)(
+                    command, data
+                ),
             )
-            
+
             return {"success": True, "result": result}
-            
+
         except Exception as e:
             self.logger.error(f"Failed to send HMI command: {e}")
             return {"success": False, "error": str(e)}
-    
+
     async def get_system_info(self) -> Dict[str, Any]:
         """Get hardware system information"""
         try:
             system_info = {
                 "hardware_state": await self.get_hardware_state(),
                 "serial_ports": [],
-                "system_resources": await self._get_system_resources()
+                "system_resources": await self._get_system_resources(),
             }
-            
+
             # Add available serial ports
             ports = serial.tools.list_ports.comports()
             for port in ports:
-                system_info["serial_ports"].append({
-                    "device": port.device,
-                    "description": port.description,
-                    "hwid": port.hwid
-                })
-            
+                system_info["serial_ports"].append(
+                    {
+                        "device": port.device,
+                        "description": port.description,
+                        "hwid": port.hwid,
+                    }
+                )
+
             return system_info
-            
+
         except Exception as e:
             self.logger.error(f"Failed to get system info: {e}")
             return {"error": str(e)}
-    
+
     async def _get_system_resources(self) -> Dict[str, Any]:
         """Get system resource information"""
         try:
             import psutil
-            
+
             return {
                 "cpu_percent": psutil.cpu_percent(interval=1),
                 "memory": {
                     "total": psutil.virtual_memory().total,
                     "available": psutil.virtual_memory().available,
-                    "percent": psutil.virtual_memory().percent
+                    "percent": psutil.virtual_memory().percent,
                 },
                 "disk": {
-                    "total": psutil.disk_usage('/').total,
-                    "free": psutil.disk_usage('/').free,
-                    "percent": psutil.disk_usage('/').percent
-                }
+                    "total": psutil.disk_usage("/").total,
+                    "free": psutil.disk_usage("/").free,
+                    "percent": psutil.disk_usage("/").percent,
+                },
             }
         except Exception as e:
             self.logger.error(f"Failed to get system resources: {e}")
             return {}
-    
+
     async def shutdown(self):
         """Shutdown the hardware service"""
         self.logger.info("Shutting down hardware service...")
         self.running = False
-        
+
         try:
             if self.control_chain:
-                await asyncio.get_event_loop().run_in_executor(None, self.control_chain.stop)
+                # ControlChainDeviceListener doesn't have explicit stop method
+                self.control_chain.crashed = True
+                self.control_chain = None
             if self.hmi:
                 await asyncio.get_event_loop().run_in_executor(None, self.hmi.stop)
             if self.serial_connection:
                 self.serial_connection.close()
         except Exception as e:
             self.logger.error(f"Error during shutdown: {e}")
-        
+
         self.logger.info("Hardware service shutdown complete")
-    
+
     async def run(self):
         """Main service loop"""
         self.running = True
         self.logger.info("Hardware service running...")
-        
+
         try:
             while self.running:
                 # Monitor hardware state
                 if self.hardware_state.device_connected:
                     # Check heartbeat timeout
-                    heartbeat_age = (datetime.now() - self.hardware_state.last_heartbeat).total_seconds()
+                    heartbeat_age = (
+                        datetime.now() - self.hardware_state.last_heartbeat
+                    ).total_seconds()
                     if heartbeat_age > 30:  # 30 second timeout
-                        self.logger.warning("Hardware heartbeat timeout, marking as disconnected")
+                        self.logger.warning(
+                            "Hardware heartbeat timeout, marking as disconnected"
+                        )
                         self.hardware_state.device_connected = False
-                
+
                 # Periodically rescan for devices if not connected
                 if not self.hardware_state.device_connected:
                     await self._detect_devices()
                     if self.hardware_state.device_connected:
                         await self._initialize_hmi()
                         await self._initialize_control_chain()
-                
+
                 await asyncio.sleep(5)  # Check every 5 seconds
-                
+
         except asyncio.CancelledError:
             self.logger.info("Hardware service cancelled")
         except Exception as e:
@@ -367,26 +411,26 @@ class HardwareService:
 
 async def main():
     """Main entry point for the hardware service"""
-    
+
     # Configure logging
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    
+
     logger = logging.getLogger(__name__)
-    
+
     # Create and initialize hardware service
     hardware_service = HardwareService()
-    
+
     # Setup signal handlers for graceful shutdown
     def signal_handler(signum, frame):
         logger.info(f"Received signal {signum}, shutting down...")
         hardware_service.running = False
-    
+
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    
+
     try:
         await hardware_service.initialize()
         await hardware_service.run()

@@ -12,6 +12,10 @@ RUN apt-get update && apt-get install -y \
     libsratom-dev \
     lv2-dev \
     pkg-config \
+    libasound2-dev \
+    libasound2 \
+    libjack-jackd2-0 \
+    liblilv-0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
