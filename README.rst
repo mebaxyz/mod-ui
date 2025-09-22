@@ -41,7 +41,8 @@ Modern Architecture
 
 🏗️ **Modular FastAPI Design**:
 - **6 specialized routers**: effects, system, pages, static, data, websocket
-- **Real-time communication**: WebSocket support
+- **Hardware service**: Standalone microservice for device management
+- **Real-time communication**: WebSocket support + Redis pub/sub
 - **Modern Python**: FastAPI with async/await  
 - **Docker ready**: Development and production containers
 - **API documentation**: Auto-generated at ``/docs``
@@ -103,6 +104,8 @@ Documentation
 - ``docs/PROJECT_STATUS.md`` - Current state and what's been accomplished
 - ``docs/QUICK_START.md`` - Step-by-step setup guide  
 - ``docs/MODULAR_ARCHITECTURE_SUMMARY.md`` - Technical architecture details
+- ``docs/HARDWARE_SERVICE.md`` - Hardware microservice documentation
+- ``docs/ARCHITECTURE.md`` - Complete system architecture
 
 🔧 **For Developers**:
 - All scripts moved to ``scripts/`` folder

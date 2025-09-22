@@ -73,8 +73,13 @@ services:
       - MOD_LOG=1
       - SESSION_SERVICE_HOST=0.0.0.0
       - SESSION_SERVICE_PORT=8002
-      - EVENT_BUS_TYPE=inmemory
+      - EVENT_BUS_TYPE=redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
       - PYTHONPATH=/app/src:/app
+    depends_on:
+      - redis
     networks:
       - mod-network
     healthcheck:
@@ -90,7 +95,10 @@ services:
       dockerfile: docker/hardware/Dockerfile
     container_name: mod-ui-hardware
     restart: unless-stopped
+    ports:
+      - "8003:8003"  # Hardware service standalone port
     volumes:
+      - ../src:/app/src
       - ../mod:/app/mod
       - /dev:/dev
       - mod-data:/data
@@ -99,11 +107,70 @@ services:
       - MOD_DEV=1
       - MOD_LOG_LEVEL=DEBUG
       - MOD_DATA_DIR=/data
+      - HARDWARE_SERVICE_HOST=0.0.0.0
+      - HARDWARE_SERVICE_PORT=8003
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - PYTHONPATH=/app/src:/app
+    depends_on:
+      - redis
     networks:
       - mod-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  mod-system-stats:
+    build:
+      context: ..
+      dockerfile: docker/system_stats/Dockerfile
+    container_name: mod-ui-system-stats
+    restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    privileged: true  # Required for system stats access
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - STATS_BROADCAST_INTERVAL=5.0
+      - PYTHONPATH=/app
+    depends_on:
+      - redis
+    networks:
+      - mod-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import redis; redis.Redis(host='redis').ping()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: mod-ui-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - mod-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   mod-data:
+    driver: local
+  redis-data:
     driver: local
 
 networks:

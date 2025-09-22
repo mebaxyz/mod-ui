@@ -161,11 +161,71 @@ Abstraction layers between web interface and hardware/audio systems.
 - C++ utilities compiled into shared libraries
 - Self-contained installation
 
-### Microservices Migration (Planned)
-- Separate API service (FastAPI)
-- Separate Web service (static file server)
-- Separate Hardware service
-- Containerized deployment with Docker
+### Microservices Migration (In Progress)
+- ✅ Separate Hardware service (FastAPI)
+- 🔄 Separate API service (FastAPI) 
+- 📋 Separate Web service (static file server)
+- ✅ Containerized deployment with Docker
+
+#### Hardware Service Architecture
+
+**Overview**: The hardware service has been extracted into a standalone FastAPI microservice that handles all physical device interactions, providing isolation and fault tolerance.
+
+**Components**:
+- **Hardware Service** (`src/mod_ui/services/hardware/main.py`): Standalone FastAPI service
+- **Hardware Client** (`mod/hardware_client.py`): HTTP client for service communication
+- **Hardware Adapter** (`mod/hardware_adapter.py`): Backward compatibility layer
+- **Redis Event Bus**: Pub/sub system for cross-service communication
+
+**Service Endpoints**:
+```http
+GET  /health                          # Service health check
+GET  /hardware/status                 # Current hardware status
+POST /hardware/scan                   # Scan for devices
+POST /hardware/hmi/ping              # Ping HMI device
+POST /hardware/hmi/reset_eeprom      # Reset HMI EEPROM
+POST /hardware/control_chain/scan    # Scan Control Chain devices
+```
+
+**Event Architecture**:
+- Hardware events published to Redis with UUID keys
+- Event types: `hardware_status_updated`, `control_chain_device_added`, `hmi_connected`
+- Structured event data with timestamps and source service identification
+- Cross-service event consumption via Redis pub/sub patterns
+
+**Deployment**:
+```yaml
+# docker/docker-compose.dev.yml
+services:
+  mod-hardware:
+    build:
+      context: .
+      dockerfile: docker/hardware/Dockerfile
+    ports:
+      - "8003:8003"
+    privileged: true  # Required for hardware access
+    depends_on:
+      - redis
+    environment:
+      - REDIS_URL=redis://redis:6379
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+```
+
+**Integration Patterns**:
+- **Backward Compatibility**: Existing `get_hardware_descriptor()` functions seamlessly use service when `MOD_USE_HARDWARE_SERVICE=1`
+- **Graceful Degradation**: Falls back to file-based descriptors when service unavailable
+- **Error Isolation**: Hardware service failures don't crash main application
+- **Service Discovery**: Automatic health checking and service recovery
+
+**Migration Benefits**:
+- **Fault Isolation**: Hardware issues don't affect main UI
+- **Independent Scaling**: Hardware service can be scaled separately
+- **Development**: Hardware service can be developed/tested independently
+- **Maintenance**: Hardware updates don't require full system restart
 
 ## Monitoring and Debugging
 

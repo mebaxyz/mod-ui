@@ -2,32 +2,45 @@
 # SPDX-FileCopyrightText: 2012-2023 MOD Audio UG
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-import os, time, logging, json
-
+import json
+import logging
+import os
+import time
 from datetime import timedelta
-from tornado import iostream, gen
+
+from tornado import gen, iostream
 from tornado.ioloop import IOLoop, PeriodicCallback
 
-from mod import safe_json_load, TextFileFlusher
-from mod.development import FakeHost, FakeHMI
+from mod import TextFileFlusher, safe_json_load
+from mod.development import FakeHMI, FakeHost
+from mod.hardware_adapter import get_hardware_adapter
 from mod.hmi import HMI
-from mod.recorder import Recorder, Player
+from mod.recorder import Player, Recorder
 from mod.screenshot import ScreenshotGenerator
-from mod.settings import (LOG,
-                          DEV_ENVIRONMENT, DEV_HMI, DEV_HOST,
-                          HMI_SERIAL_PORT, HMI_BAUD_RATE, HMI_TIMEOUT,
-                          PREFERENCES_JSON_FILE, DEFAULT_SNAPSHOT_NAME, UNTITLED_PEDALBOARD_NAME)
+from mod.settings import (
+    DEFAULT_SNAPSHOT_NAME,
+    DEV_ENVIRONMENT,
+    DEV_HMI,
+    DEV_HOST,
+    HMI_BAUD_RATE,
+    HMI_SERIAL_PORT,
+    HMI_TIMEOUT,
+    LOG,
+    PREFERENCES_JSON_FILE,
+    UNTITLED_PEDALBOARD_NAME,
+)
 
 if DEV_HOST:
     Host = FakeHost
 else:
     from mod.host import Host
 
+
 class UserPreferences(object):
     def __init__(self):
         self.prefs = safe_json_load(PREFERENCES_JSON_FILE, dict)
 
-    def get(self, key, default, type_ = None, values = None):
+    def get(self, key, default, type_=None, values=None):
         value = self.prefs.get(key, default)
 
         if type_ is not None and not isinstance(value, type_):
@@ -41,7 +54,7 @@ class UserPreferences(object):
 
         return value
 
-    def setAndSave(self, key, value, atomicSave = True):
+    def setAndSave(self, key, value, atomicSave=True):
         self.prefs[key] = value
         if atomicSave:
             self.saveAtomic()
@@ -54,10 +67,11 @@ class UserPreferences(object):
 
     def saveAsync(self):
         try:
-            with open(PREFERENCES_JSON_FILE, 'w') as fh:
+            with open(PREFERENCES_JSON_FILE, "w") as fh:
                 json.dump(self.prefs, fh, indent=4)
         except OSError:
             pass
+
 
 class Session(object):
     def __init__(self):
@@ -73,17 +87,26 @@ class Session(object):
         self.screenshot_generator = ScreenshotGenerator()
         self.websockets = []
 
+        # Hardware service adapter for gradual migration
+        self.hardware_adapter = get_hardware_adapter()
+
         # Used in mod-app to know when the current pedalboard changed
-        self.pedalboard_changed_callback = lambda ok,bundlepath,title:None
+        self.pedalboard_changed_callback = lambda ok, bundlepath, title: None
 
         # Try to open real HMI
         hmiOpened = False
 
         if not DEV_HMI:
-            self.hmi  = HMI(HMI_SERIAL_PORT, HMI_BAUD_RATE, HMI_TIMEOUT, self.hmi_initialized_cb, self.hmi_reinit_cb)
+            self.hmi = HMI(
+                HMI_SERIAL_PORT,
+                HMI_BAUD_RATE,
+                HMI_TIMEOUT,
+                self.hmi_initialized_cb,
+                self.hmi_reinit_cb,
+            )
             hmiOpened = self.hmi.sp is not None
 
-        #print("Using HMI =>", hmiOpened)
+        # print("Using HMI =>", hmiOpened)
 
         if not hmiOpened:
             self.hmi = FakeHMI(self.hmi_initialized_cb)
@@ -93,7 +116,7 @@ class Session(object):
 
     def signal_save(self):
         # reuse HMI function
-        self.host.hmi_save_current_pedalboard(lambda r:None)
+        self.host.hmi_save_current_pedalboard(lambda r: None)
 
     def signal_device_updated(self):
         self.msg_callback("cc-device-updated")
@@ -104,7 +127,7 @@ class Session(object):
         for ws in sockets:
             ws.write_message("stop")
             ws.close()
-        self.host.end_session(lambda r:None)
+        self.host.end_session(lambda r: None)
 
     def get_hardware_actuators(self):
         return self.host.addressings.get_actuators()
@@ -146,7 +169,13 @@ class Session(object):
         # restart hmi
         os.system("/usr/bin/hmi-reset; /usr/bin/sleep 3")
         # reconnect to newly started hmi
-        self.hmi = HMI(HMI_SERIAL_PORT, HMI_BAUD_RATE, HMI_TIMEOUT, self.hmi_initialized_cb, self.hmi_reinit_cb)
+        self.hmi = HMI(
+            HMI_SERIAL_PORT,
+            HMI_BAUD_RATE,
+            HMI_TIMEOUT,
+            self.hmi_initialized_cb,
+            self.hmi_reinit_cb,
+        )
         self.host.reconnect_hmi(self.hmi)
 
     # -----------------------------------------------------------------------------------------------------------------
@@ -165,19 +194,46 @@ class Session(object):
         self.host.remove_plugin(instance, callback)
 
     # Address a plugin parameter
-    def web_parameter_address(self, port, actuator_uri, label, minimum, maximum, value,
-                              steps, tempo, dividers, page, subpage, coloured, momentary, operational_mode, callback):
-        instance, portsymbol = port.rsplit("/",1)
+    def web_parameter_address(
+        self,
+        port,
+        actuator_uri,
+        label,
+        minimum,
+        maximum,
+        value,
+        steps,
+        tempo,
+        dividers,
+        page,
+        subpage,
+        coloured,
+        momentary,
+        operational_mode,
+        callback,
+    ):
+        instance, portsymbol = port.rsplit("/", 1)
         extras = {
-            'tempo': tempo,
-            'dividers': dividers,
-            'page': page,
-            'subpage': subpage,
-            'coloured': coloured,
-            'momentary': momentary,
-            'operational_mode': operational_mode,
+            "tempo": tempo,
+            "dividers": dividers,
+            "page": page,
+            "subpage": subpage,
+            "coloured": coloured,
+            "momentary": momentary,
+            "operational_mode": operational_mode,
         }
-        self.host.address(instance, portsymbol, actuator_uri, label, minimum, maximum, value, steps, extras, callback)
+        self.host.address(
+            instance,
+            portsymbol,
+            actuator_uri,
+            label,
+            minimum,
+            maximum,
+            value,
+            steps,
+            extras,
+            callback,
+        )
 
     def web_set_sync_mode(self, mode, callback):
         self.host.set_sync_mode(mode, True, False, True, callback)
@@ -198,7 +254,7 @@ class Session(object):
         bundlepath, newTitle = self.host.save(title, asNew, callback)
         self.pedalboard_changed_callback(True, bundlepath, title)
 
-        if self.hmi.initialized and self.host.descriptor.get('hmi_set_pb_name', False):
+        if self.hmi.initialized and self.host.descriptor.get("hmi_set_pb_name", False):
             self.hmi_set_pb_name(newTitle or title)
 
         if bundlepath and self.screenshot_needed:
@@ -320,7 +376,7 @@ class Session(object):
     # Set a plugin parameter
     # We use ":bypass" symbol for on/off state
     def ws_parameter_set(self, port, value, ws):
-        instance, portsymbol = port.rsplit("/",1)
+        instance, portsymbol = port.rsplit("/", 1)
 
         if portsymbol == ":bypass":
             bvalue = value >= 0.5
@@ -328,7 +384,9 @@ class Session(object):
         else:
             self.host.param_set(port, value, None)
 
-        self.msg_callback_broadcast("param_set %s %s %f" % (instance, portsymbol, value), ws)
+        self.msg_callback_broadcast(
+            "param_set %s %s %f" % (instance, portsymbol, value), ws
+        )
 
     # LV2 patch support
     def ws_patch_get(self, instance, uri, ws):
@@ -336,9 +394,11 @@ class Session(object):
 
     def ws_patch_set(self, instance, uri, valuetype, valuedata, ws):
         writable = self.host.patch_set(instance, uri, valuedata, None)
-        self.msg_callback_broadcast("patch_set %s %d %s %c %s" % (instance,
-                                                                  1 if writable else 0,
-                                                                  uri, valuetype, valuedata), ws)
+        self.msg_callback_broadcast(
+            "patch_set %s %d %s %c %s"
+            % (instance, 1 if writable else 0, uri, valuetype, valuedata),
+            ws,
+        )
 
     # Set a plugin block position within the canvas
     def ws_plugin_position(self, instance, x, y, ws):
@@ -358,7 +418,9 @@ class Session(object):
         # we need to keep socket active, so UI receives idle time, just setup an idle function here
         if self.external_ui_timer is not None:
             return
-        self.external_ui_timer = PeriodicCallback(lambda: self.host.send_notmodified("cpu_load"), 1000/30)
+        self.external_ui_timer = PeriodicCallback(
+            lambda: self.host.send_notmodified("cpu_load"), 1000 / 30
+        )
         self.external_ui_timer.start()
 
     # -----------------------------------------------------------------------------------------------------------------
@@ -370,43 +432,62 @@ class Session(object):
 
     @gen.coroutine
     def hmi_set_pb_and_ss_name(self, pbname):
-        if self.host.descriptor.get('hmi_set_pb_name', False):
+        if self.host.descriptor.get("hmi_set_pb_name", False):
             yield gen.Task(self.hmi.set_pedalboard_name, pbname)
 
-        if self.host.descriptor.get('hmi_set_ss_name', False):
+        if self.host.descriptor.get("hmi_set_ss_name", False):
             ssname = self.host.snapshot_name() or DEFAULT_SNAPSHOT_NAME
-            yield gen.Task(self.hmi.set_snapshot_name, self.host.current_pedalboard_snapshot_id, ssname)
+            yield gen.Task(
+                self.hmi.set_snapshot_name,
+                self.host.current_pedalboard_snapshot_id,
+                ssname,
+            )
 
     def readdress_presets(self, instance, callback):
         instance_id = self.host.mapper.get_id_without_creating(instance)
-        addressings = self.host.plugins[instance_id]['addressings']
+        addressings = self.host.plugins[instance_id]["addressings"]
 
-        if ':presets' not in addressings:
+        if ":presets" not in addressings:
             callback(True)
             return
 
-        presets = addressings[':presets']
+        presets = addressings[":presets"]
         data = self.host.addressings.get_presets_as_options(instance_id)
         if not data:
             callback(True)
             return
 
         value, maximum, options, spreset = data
-        port = instance + '/' + presets['port']
-        minimum = presets['minimum']
-        label = presets['label']
-        steps = presets['steps']
-        actuator_uri = presets['actuator_uri']
-        tempo = presets.get('tempo', False)
-        dividers = presets.get('dividers', None)
-        page = presets.get('page', None)
-        subpage = presets.get('subpage', None)
-        coloured = presets.get('coloured', None)
-        momentary = presets.get('momentary', None)
-        operational_mode = presets.get('operationalMode', None)
+        port = instance + "/" + presets["port"]
+        minimum = presets["minimum"]
+        label = presets["label"]
+        steps = presets["steps"]
+        actuator_uri = presets["actuator_uri"]
+        tempo = presets.get("tempo", False)
+        dividers = presets.get("dividers", None)
+        page = presets.get("page", None)
+        subpage = presets.get("subpage", None)
+        coloured = presets.get("coloured", None)
+        momentary = presets.get("momentary", None)
+        operational_mode = presets.get("operationalMode", None)
 
-        self.web_parameter_address(port, actuator_uri, label, minimum, maximum, value, steps, tempo, dividers,
-                                   page, subpage, coloured, momentary, operational_mode, callback)
+        self.web_parameter_address(
+            port,
+            actuator_uri,
+            label,
+            minimum,
+            maximum,
+            value,
+            steps,
+            tempo,
+            dividers,
+            page,
+            subpage,
+            coloured,
+            momentary,
+            operational_mode,
+            callback,
+        )
 
     # -----------------------------------------------------------------------------------------------------------------
     # TODO
@@ -418,7 +499,8 @@ class Session(object):
 
     def msg_callback_broadcast(self, msg, ws2):
         for ws in self.websockets:
-            if ws == ws2: continue
+            if ws == ws2:
+                continue
             ws.write_message(msg)
 
     def load_pedalboard(self, bundlepath, isDefault):
@@ -431,8 +513,10 @@ class Session(object):
             bundlepath = ""
             title = ""
 
-        if self.hmi.initialized and (self.host.descriptor.get('hmi_set_pb_name', False) or
-                                     self.host.descriptor.get('hmi_set_ss_name', False)):
+        if self.hmi.initialized and (
+            self.host.descriptor.get("hmi_set_pb_name", False)
+            or self.host.descriptor.get("hmi_set_ss_name", False)
+        ):
             self.hmi_set_pb_and_ss_name(title or UNTITLED_PEDALBOARD_NAME)
 
         self.pedalboard_changed_callback(True, bundlepath, title)
@@ -451,12 +535,16 @@ class Session(object):
             self.host.reset(None, host_callback)
 
         if self.hmi.initialized:
+
             def set_pb_name(_):
                 self.hmi.set_pedalboard_name(UNTITLED_PEDALBOARD_NAME, reset_host)
+
             def clear_ss_name(_):
                 self.host.hmi_clear_ss_name(set_pb_name)
+
             def clear_hmi(_):
                 self.hmi.clear(clear_ss_name)
+
             if self.host.descriptor.get("hmi_bank_navigation", False):
                 self.host.setNavigateWithFootswitches(False, clear_hmi)
             else:
@@ -470,10 +558,33 @@ class Session(object):
     # host commands
 
     def format_port(self, port):
-        if not 'system' in port and not 'effect' in port:
+        if not "system" in port and not "effect" in port:
             port = "effect_%s" % port
         return port
 
+    # Hardware service methods
+
+    def get_hardware_status(self):
+        """Get hardware status from the hardware service."""
+        return self.hardware_adapter.get_hardware_status()
+
+    def is_hardware_service_healthy(self):
+        """Check if hardware service is healthy."""
+        return self.hardware_adapter.is_service_healthy()
+
+    def hardware_service_scan_devices(self):
+        """Scan for hardware devices via service."""
+        return self.hardware_adapter.scan_devices()
+
+    def hardware_service_hmi_ping(self):
+        """Ping HMI via hardware service."""
+        return self.hardware_adapter.hmi_ping()
+
+    def hardware_service_hmi_reset_eeprom(self):
+        """Reset HMI EEPROM via hardware service."""
+        return self.hardware_adapter.hmi_reset_eeprom()
+
     # END host commands
+
 
 SESSION = Session()

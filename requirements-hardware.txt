@@ -1,0 +1,26 @@
+# Minimal requirements for Hardware Service
+# Only dependencies needed for hardware communication
+
+# Core dependencies
+fastapi>=0.100.0
+uvicorn[standard]>=0.20.0
+pydantic>=2.0.0
+
+# Event bus communication  
+redis>=4.5.0
+hiredis>=2.2.0
+
+# Serial communication
+pyserial>=3.5
+
+# Audio system integration (if needed for health checks)
+# Note: JACK integration is handled via C++ utils
+
+# HTTP client for health checks
+httpx>=0.24.0
+
+# Async support
+asyncio-mqtt>=0.13.0
+
+# Logging and monitoring
+structlog>=22.0.0

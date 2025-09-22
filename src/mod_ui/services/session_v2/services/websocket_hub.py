@@ -322,6 +322,11 @@ class WebSocketHubService:
     async def _handle_event(self, event: SessionEvent) -> None:
         """Handle events from the event bus"""
         try:
+            # Handle system stats events specially for legacy compatibility
+            if event.event_type == EventType.SYSTEM_STATS_UPDATED:
+                await self._handle_system_stats_event(event)
+                return
+
             # Convert event to WebSocket message
             message = {
                 "type": "event",
@@ -346,6 +351,38 @@ class WebSocketHubService:
 
         except Exception as e:
             self.logger.error(f"Error handling event {event.event_type}: {e}")
+
+    async def _handle_system_stats_event(self, event: SessionEvent) -> None:
+        """Handle system stats events and convert to legacy message format"""
+        try:
+            data = event.data
+            if not data:
+                return
+
+            # Extract system stats data
+            mem_load = float(data.get("memory_percent", 0.0))
+
+            # Parse CPU frequency from Hz to MHz
+            cpu_freq_hz = data.get("cpu_frequency", "0")
+            if isinstance(cpu_freq_hz, str) and cpu_freq_hz.isdigit():
+                cpu_freq = int(int(cpu_freq_hz) / 1_000_000)  # Convert Hz to MHz
+            else:
+                cpu_freq = 0
+
+            # Parse CPU temperature from millidegrees to degrees
+            cpu_temp_milli = data.get("cpu_temperature", "0")
+            if isinstance(cpu_temp_milli, str) and cpu_temp_milli.isdigit():
+                cpu_temp = int(
+                    int(cpu_temp_milli) / 1000
+                )  # Convert millidegrees to degrees
+            else:
+                cpu_temp = 0
+
+            # Send legacy sys_stats message to all clients
+            await self.send_sys_stats_message(mem_load, cpu_freq, cpu_temp)
+
+        except Exception as e:
+            self.logger.error(f"Error handling system stats event: {e}")
 
     # Private message handlers
 

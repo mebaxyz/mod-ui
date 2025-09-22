@@ -48,8 +48,25 @@ class EventType(str, Enum):
     # Hardware events
     HARDWARE_CONNECTED = "hardware_connected"
     HARDWARE_DISCONNECTED = "hardware_disconnected"
-    HARDWARE_DEVICE_ADDED = "hardware_device_added"
-    HARDWARE_DEVICE_REMOVED = "hardware_device_removed"
+    HARDWARE_STATUS_UPDATED = "hardware_status_updated"
+    HARDWARE_ERROR = "hardware_error"
+
+    # Control Chain events
+    CONTROL_CHAIN_DEVICE_ADDED = "control_chain_device_added"
+    CONTROL_CHAIN_DEVICE_REMOVED = "control_chain_device_removed"
+    CONTROL_CHAIN_DEVICE_CONNECTED = "control_chain_device_connected"
+    CONTROL_CHAIN_DEVICE_DISCONNECTED = "control_chain_device_disconnected"
+    CONTROL_CHAIN_ACTUATOR_ADDED = "control_chain_actuator_added"
+
+    # HMI events
+    HMI_MESSAGE_RECEIVED = "hmi_message_received"
+    HMI_CONTROL_ADDED = "hmi_control_added"
+    HMI_CONTROL_CHANGED = "hmi_control_changed"
+    HMI_CONTROL_REMOVED = "hmi_control_removed"
+
+    # Audio connection events
+    AUDIO_CONNECTION_ADDED = "audio_connection_added"
+    AUDIO_CONNECTION_REMOVED = "audio_connection_removed"
 
     # Audio engine events
     AUDIO_ENGINE_STARTED = "audio_engine_started"
@@ -182,6 +199,8 @@ class SystemStatsEventData(BaseModel):
     memory_percent: float
     disk_percent: float
     audio_xruns: int
+    cpu_frequency: Optional[str] = None
+    cpu_temperature: Optional[str] = None
     jack_sample_rate: Optional[int] = None
     jack_buffer_size: Optional[int] = None
 
@@ -288,4 +307,30 @@ def create_client_event(
         source_service=source_service,
         session_id=session_id,
         data=ClientEventData(client_id=client_id, **kwargs).dict(),
+    )
+
+
+def create_system_stats_event(
+    event_type: EventType,
+    source_service: str,
+    cpu_percent: float,
+    memory_percent: float,
+    cpu_frequency: str,
+    cpu_temperature: str,
+    xruns: int,
+    session_id: Optional[str] = None,
+) -> SessionEvent:
+    """Create a system statistics event"""
+    return SessionEvent(
+        event_type=event_type,
+        source_service=source_service,
+        session_id=session_id,
+        data=SystemStatsEventData(
+            cpu_percent=cpu_percent,
+            memory_percent=memory_percent,
+            disk_percent=0.0,  # Not currently tracked
+            audio_xruns=xruns,
+            cpu_frequency=cpu_frequency,
+            cpu_temperature=cpu_temperature,
+        ).dict(exclude_none=False),
     )

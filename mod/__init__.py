@@ -2,20 +2,18 @@
 # SPDX-FileCopyrightText: 2012-2023 MOD Audio UG
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-import os
-import sys
-import re
 import json
+import os
+import re
 import shutil
-
+import sys
 from datetime import datetime
 from functools import wraps
 from unicodedata import normalize
 
 from mod.settings import HARDWARE_DESC_FILE
 
-
-WINDOWS = sys.platform == 'win32'
+WINDOWS = sys.platform == "win32"
 
 
 def jsoncall(method):
@@ -29,11 +27,12 @@ def jsoncall(method):
                 self.request.body = json.loads(decoded)
         result = method(self, *args, **kwargs)
         if result is not None:
-            self.set_header('Content-Type', 'application/json; charset=UTF-8')
+            self.set_header("Content-Type", "application/json; charset=UTF-8")
             self.write(json.dumps(result, default=json_handler))
         else:
-            self.set_header('Content-Type', 'text/plain; charset=UTF-8')
+            self.set_header("Content-Type", "text/plain; charset=UTF-8")
             self.set_status(204)
+
     return wrapper
 
 
@@ -49,12 +48,22 @@ def os_sync():
 
 
 def check_environment():
-    from mod.settings import (LV2_PEDALBOARDS_DIR,
-                              DEFAULT_PEDALBOARD, DEFAULT_PEDALBOARD_COPY,
-                              DATA_DIR, DOWNLOAD_TMP_DIR, PEDALBOARD_TMP_DIR,
-                              KEYS_PATH, USER_BANKS_JSON_FILE, FAVORITES_JSON_FILE,
-                              UPDATE_CC_FIRMWARE_FILE, UPDATE_MOD_OS_FILE, UPDATE_MOD_OS_HERLPER_FILE,
-                              CAPTURE_PATH, PLAYBACK_PATH)
+    from mod.settings import (
+        CAPTURE_PATH,
+        DATA_DIR,
+        DEFAULT_PEDALBOARD,
+        DEFAULT_PEDALBOARD_COPY,
+        DOWNLOAD_TMP_DIR,
+        FAVORITES_JSON_FILE,
+        KEYS_PATH,
+        LV2_PEDALBOARDS_DIR,
+        PEDALBOARD_TMP_DIR,
+        PLAYBACK_PATH,
+        UPDATE_CC_FIRMWARE_FILE,
+        UPDATE_MOD_OS_FILE,
+        UPDATE_MOD_OS_HERLPER_FILE,
+        USER_BANKS_JSON_FILE,
+    )
 
     # create temp dirs
     if not os.path.exists(DOWNLOAD_TMP_DIR):
@@ -95,19 +104,23 @@ def check_environment():
     if not os.path.exists(LV2_PEDALBOARDS_DIR):
         os.makedirs(LV2_PEDALBOARDS_DIR)
 
-    if os.path.exists(DEFAULT_PEDALBOARD_COPY) and not os.path.exists(DEFAULT_PEDALBOARD):
+    if os.path.exists(DEFAULT_PEDALBOARD_COPY) and not os.path.exists(
+        DEFAULT_PEDALBOARD
+    ):
         shutil.copytree(DEFAULT_PEDALBOARD_COPY, DEFAULT_PEDALBOARD)
 
     if not os.path.exists(USER_BANKS_JSON_FILE):
-        with open(USER_BANKS_JSON_FILE, 'w') as fh:
+        with open(USER_BANKS_JSON_FILE, "w") as fh:
             fh.write("[]")
 
     if not os.path.exists(FAVORITES_JSON_FILE):
-        with open(FAVORITES_JSON_FILE, 'w') as fh:
+        with open(FAVORITES_JSON_FILE, "w") as fh:
             fh.write("[]")
 
     # remove previous update file
-    if os.path.exists(UPDATE_MOD_OS_FILE) and not os.path.exists("/root/check-upgrade-system"):
+    if os.path.exists(UPDATE_MOD_OS_FILE) and not os.path.exists(
+        "/root/check-upgrade-system"
+    ):
         os.remove(UPDATE_MOD_OS_FILE)
         os_sync()
 
@@ -150,17 +163,17 @@ def get_unique_name(name, names):
     if name not in names:
         return None
 
-    regex = r'^.* \(([0-9]*)\)$'
+    regex = r"^.* \(([0-9]*)\)$"
     match = re.match(regex, name)
 
     if match is None:
-        name += ' (2)'
+        name += " (2)"
         if name in names:
             match = re.match(regex, name)
 
     while match is not None:
         num = int(match.groups()[0])
-        name = name[:name.rfind('(')] + '({})'.format(num + 1)
+        name = name[: name.rfind("(")] + "({})".format(num + 1)
         if name not in names:
             return name
         match = re.match(regex, name)
@@ -168,9 +181,13 @@ def get_unique_name(name, names):
     return name
 
 
-def normalize_for_hw(string, limit = 31):
+def normalize_for_hw(string, limit=31):
     return '"%s"' % (
-        normalize('NFKD',string).encode('ascii','ignore').decode('ascii','ignore').replace('"','')[:limit].upper()
+        normalize("NFKD", string)
+        .encode("ascii", "ignore")
+        .decode("ascii", "ignore")
+        .replace('"', "")[:limit]
+        .upper()
     )
 
 
@@ -179,7 +196,7 @@ def safe_json_load(path, objtype):
         return objtype()
 
     try:
-        with open(path, 'r') as fh:
+        with open(path, "r") as fh:
             data = json.load(fh)
     except:
         return objtype()
@@ -193,7 +210,7 @@ def safe_json_load(path, objtype):
 def symbolify(name):
     if len(name) == 0:
         return "_"
-    name = normalize('NFKD', name).encode('ascii', 'ignore').decode('ascii', 'ignore')
+    name = normalize("NFKD", name).encode("ascii", "ignore").decode("ascii", "ignore")
     name = re.sub("[^_a-zA-Z0-9]+", "_", name)
     if name[0].isdigit():
         name = "_" + name
@@ -201,11 +218,33 @@ def symbolify(name):
 
 
 def get_hardware_descriptor():
+    # Check if hardware service mode is enabled via environment variable
+    import os
+
+    if os.environ.get("MOD_USE_HARDWARE_SERVICE", "").lower() in ("1", "true", "yes"):
+        try:
+            from mod.hardware_adapter import get_hardware_descriptor_via_service
+
+            return get_hardware_descriptor_via_service()
+        except ImportError:
+            pass  # Fallback to file-based descriptor
+
     return safe_json_load(HARDWARE_DESC_FILE, dict)
 
 
 def get_hardware_actuators():
-    return get_hardware_descriptor().get('actuators', [])
+    # Check if hardware service mode is enabled via environment variable
+    import os
+
+    if os.environ.get("MOD_USE_HARDWARE_SERVICE", "").lower() in ("1", "true", "yes"):
+        try:
+            from mod.hardware_adapter import get_hardware_actuators_via_service
+
+            return get_hardware_actuators_via_service()
+        except ImportError:
+            pass  # Fallback to file-based descriptor
+
+    return get_hardware_descriptor().get("actuators", [])
 
 
 def read_file_contents(fh, fallback):
@@ -218,8 +257,10 @@ def read_file_contents(fh, fallback):
 class DummyFile(object):
     def write(self, _):
         return
+
     def flush(self):
         return
+
     def close(self):
         return
 
@@ -231,7 +272,7 @@ class TextFileFlusher(object):
 
     def __enter__(self):
         try:
-            self.filehandle = open(self.filename+".tmp", 'w', 1)
+            self.filehandle = open(self.filename + ".tmp", "w", 1)
         except OSError:
             print("ERROR: failed to open", self.filename)
             self.filehandle = DummyFile()
@@ -248,4 +289,4 @@ class TextFileFlusher(object):
         if WINDOWS and os.path.exists(self.filename):
             os.remove(self.filename)
 
-        os.rename(self.filename+".tmp", self.filename)
+        os.rename(self.filename + ".tmp", self.filename)

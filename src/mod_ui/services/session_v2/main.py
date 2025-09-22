@@ -8,6 +8,7 @@ built with FastAPI and featuring async/await throughout.
 import asyncio
 import json
 import logging
+import os
 import signal
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -18,29 +19,41 @@ from fastapi.middleware.cors import CORSMiddleware
 from .models import PedalboardModel, SessionState
 from .routers import pedalboard_router, realtime_router, session_router
 from .services.state_manager import StateManagerService
-from .services.system_stats import SystemStatsService
 from .services.websocket_hub import WebSocketHubService
-from .utils.event_bus import InMemoryEventBus
+from .utils.event_bus import EventBus, InMemoryEventBus, RedisEventBus
 
 # Global service instances
 state_manager: Optional[StateManagerService] = None
 websocket_hub: Optional[WebSocketHubService] = None
-system_stats: Optional[SystemStatsService] = None
-event_bus: Optional[InMemoryEventBus] = None
+event_bus: Optional[EventBus] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan context manager for startup and shutdown"""
-    global state_manager, websocket_hub, system_stats, event_bus
+    global state_manager, websocket_hub, event_bus
 
     logger = logging.getLogger(__name__)
     logger.info("Starting Session Service v2...")
 
     try:
-        # Initialize event bus
-        event_bus = InMemoryEventBus()
-        logger.info("Event bus initialized")
+        # Initialize event bus based on configuration
+        event_bus_type = os.getenv("EVENT_BUS_TYPE", "inmemory")
+
+        if event_bus_type == "redis":
+            redis_host = os.getenv("REDIS_HOST", "localhost")
+            redis_port = int(os.getenv("REDIS_PORT", "6379"))
+            redis_db = int(os.getenv("REDIS_DB", "0"))
+
+            redis_url = f"redis://{redis_host}:{redis_port}/{redis_db}"
+
+            event_bus = RedisEventBus(redis_url)
+            logger.info(f"Redis event bus initialized (url={redis_url})")
+        else:
+            event_bus = InMemoryEventBus()
+            logger.info("In-memory event bus initialized")
+
+        await event_bus.initialize()
 
         # Initialize state manager
         state_manager = StateManagerService(event_publisher=event_bus)
@@ -52,20 +65,10 @@ async def lifespan(app: FastAPI):
         await websocket_hub.initialize()
         logger.info("WebSocket hub initialized")
 
-        # Initialize system stats service
-        system_stats = SystemStatsService(websocket_hub=websocket_hub)
-        await system_stats.initialize()
-        logger.info("System stats service initialized")
-
-        # Start system stats broadcasting
-        await system_stats.start()
-        logger.info("System stats broadcasting started")
-
         # Store services in app state for access from routers
         app.state.event_bus = event_bus
         app.state.state_manager = state_manager
         app.state.websocket_hub = websocket_hub
-        app.state.system_stats = system_stats
 
         logger.info("Session Service v2 startup complete")
 
@@ -77,10 +80,6 @@ async def lifespan(app: FastAPI):
 
     finally:
         logger.info("Shutting down Session Service v2...")
-
-        # Close system stats service
-        if system_stats:
-            await system_stats.close()
 
         # Close WebSocket hub
         if websocket_hub:
@@ -165,10 +164,7 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.info("WebSocket client connected: %s", client_id)
 
         # Send initialization sequence that frontend expects
-        await websocket_hub.send_sys_stats_message(
-            80.0, "1800000000", "50000"
-        )  # Default system stats
-        await websocket_hub.send_stats_message(100.0, 0)  # CPU 100%, 0 xruns
+        # Note: System stats will now be sent via events from the standalone service
         await websocket_hub.send_transport_message(False, 4.0, 120.0, "none")
         await websocket_hub.send_truebypass_message(False, False)
         await websocket_hub.send_loading_start_message(
