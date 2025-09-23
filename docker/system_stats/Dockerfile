@@ -16,10 +16,10 @@ COPY requirements-system-stats.txt .
 RUN pip install --no-cache-dir -r requirements-system-stats.txt
 
 # Copy source code
-COPY src/ ./
+COPY src/ ./src/
 
 # Set Python path to include the app directory
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app/src:/app
 
 # Create a non-root user with access to system files
 RUN groupadd -r modstats && useradd -r -g modstats modstats
@@ -28,4 +28,5 @@ RUN groupadd -r modstats && useradd -r -g modstats modstats
 # This is necessary for reading /proc, /sys files
 
 # Set the command to run the service
+WORKDIR /app/src
 CMD ["python", "-m", "mod_ui.services.system_stats.main"]

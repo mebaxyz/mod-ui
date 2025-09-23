@@ -4,7 +4,6 @@ WebSocket Gateway Service
 Dedicated microservice for real-time communication across all MOD UI services.
 """
 
-from .main import app
 from .models import (
     ClientConnection,
     EventRouterStats,
@@ -28,8 +27,6 @@ from .utils import (
 __version__ = "1.0.0"
 
 __all__ = [
-    # Main app
-    "app",
     # Models
     "ClientConnection",
     "EventSubscription",

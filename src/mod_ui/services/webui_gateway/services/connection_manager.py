@@ -10,7 +10,7 @@ import logging
 import time
 import uuid
 from collections import defaultdict
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
@@ -330,22 +330,20 @@ class ConnectionManager:
         total_subscriptions = sum(
             len(subs) for subs in self.client_subscriptions.values()
         )
-        event_type_counts = {
-            str(event_type): len(clients)
-            for event_type, clients in self.subscriptions.items()
-            if clients
-        }
 
         return GatewayStats(
-            connected_clients=self.connection_count,
-            total_subscriptions=total_subscriptions,
-            event_type_subscriptions=event_type_counts,
-            uptime=time.time()
-            - (self.last_cleanup if hasattr(self, "start_time") else time.time()),
-            messages_sent=sum(self.message_counts.values()),
-            active_connections=[
-                conn.client_id for conn in self.connections.values() if conn.is_active
-            ],
+            total_connections=self.connection_count,
+            active_connections=len(
+                [c for c in self.connections.values() if c.is_active]
+            ),
+            total_messages_sent=sum(self.message_counts.values()),
+            total_messages_received=sum(self.message_counts.values()),  # Approximation
+            events_processed=0,  # This would come from EventRouter
+            active_subscriptions=total_subscriptions,
+            uptime_seconds=int(
+                time.time()
+                - (self.start_time if hasattr(self, "start_time") else time.time())
+            ),
         )
 
     def get_client_info(self, client_id: str) -> Optional[ClientConnection]:
@@ -355,6 +353,34 @@ class ConnectionManager:
     def get_all_clients(self) -> List[ClientConnection]:
         """Get information about all connected clients"""
         return list(self.connections.values())
+
+    async def add_connection(
+        self, websocket: WebSocket, client_id: Optional[str] = None
+    ) -> str:
+        """Add a new WebSocket connection (alias for connect)"""
+        return await self.connect(websocket, client_id)
+
+    async def remove_connection(self, client_id: str) -> bool:
+        """Remove a WebSocket connection (alias for disconnect)"""
+        if client_id in self.connections:
+            await self.disconnect(client_id)
+            return True
+        return False
+
+    def get_connection_info(self) -> List[Dict[str, Any]]:
+        """Get information about all connections"""
+        return [
+            {
+                "client_id": conn.client_id,
+                "connected_at": conn.connected_at.timestamp(),
+                "last_activity": conn.last_activity.timestamp(),
+                "messages_sent": conn.messages_sent,
+                "messages_received": conn.messages_received,
+                "subscriptions": list(conn.subscriptions),
+                "is_active": conn.status == "connected",
+            }
+            for conn in self.connections.values()
+        ]
 
     async def cleanup_inactive_connections(self):
         """Remove connections that haven't been active recently"""
@@ -369,7 +395,7 @@ class ConnectionManager:
 
         for client_id in inactive_clients:
             logger.info(f"Removing inactive client: {client_id}")
-            await self.remove_connection(client_id)
+            await self.disconnect(client_id)
 
         if inactive_clients:
             logger.info(f"Cleaned up {len(inactive_clients)} inactive connections")

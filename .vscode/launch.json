@@ -157,5 +157,36 @@
             "console": "integratedTerminal",
             "subProcess": true
         },
+        {
+            "name": "WebSocket Gateway (Uvicorn module)",
+            "type": "python",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "src.mod_ui.services.websocket_gateway.main:app",
+                "--host", "127.0.0.1",
+                "--port", "8081",
+                "--reload"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "subProcess": true
+        },
+        {
+            "name": "WebSocket Gateway (Run simple_main.py)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/mod_ui/services/websocket_gateway/simple_main.py",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": false
+        }
     ]
 }

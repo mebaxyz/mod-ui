@@ -47,6 +47,10 @@ class RedisEventSubscriber:
         self.connection_errors = 0
         self.start_time = time.time()
 
+    def is_connected(self) -> bool:
+        """Check if Redis subscriber is connected"""
+        return self.is_connected
+
     async def start(self):
         """Start the Redis subscriber"""
 

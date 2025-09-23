@@ -304,7 +304,34 @@ class EventRouter:
 
         return transformed
 
-    def setup_default_filters_and_transformers(self):
+    async def broadcast_to_subscribers(
+        self,
+        event_type: EventType,
+        data: dict,
+        exclude_clients: Optional[Set[str]] = None,
+    ) -> int:
+        """Broadcast event to subscribed clients (alias for route_event)"""
+        success = await self.route_event(
+            event_type, data, exclude_clients=exclude_clients
+        )
+        # Return count of subscribers (approximate)
+        return len(self.connection_manager.subscriptions.get(event_type, set()))
+
+    async def send_initial_status(self, client_id: str):
+        """Send initial status to client"""
+        await self.connection_manager._send_status(client_id)
+
+    async def handle_client_message(self, client_id: str, message: str):
+        """Handle incoming message from client"""
+        try:
+            data = json.loads(message)
+            await self.connection_manager.handle_client_message(client_id, data)
+        except json.JSONDecodeError:
+            logger.error(f"Invalid JSON message from {client_id}: {message}")
+
+    def get_stats(self):
+        """Get event router statistics (non-async version for compatibility)"""
+        return self.get_stats()
         """Setup default event filters and transformers"""
 
         # Add default system stats filter

@@ -8,6 +8,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
@@ -29,9 +30,9 @@ USER modui
 # Expose port
 EXPOSE 8081
 
-# Health check using Python instead of curl
+# Health check using curl instead of Python
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8081/ping', timeout=5)" || exit 1
+    CMD curl -f http://localhost:8081/ping || exit 1
 
-# Start command (using working version with enhanced functionality)
-CMD ["python", "src/mod_ui/services/websocket_gateway/simple_main.py"]
+# Start command (using the updated main file with service integration)
+CMD ["python", "-m", "src.mod_ui.services.webui_gateway.main"]

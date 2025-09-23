@@ -18,10 +18,28 @@ from typing import Any, Dict, List, Optional, Set
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
+from mod_ui.common import ServiceClient
 from src.mod_ui.services.websocket_gateway.models import (
     ClientConnection,
     EventSubscription,
     GatewayStats,
+)
+
+# Import API routers
+from src.mod_ui.services.websocket_gateway.routers import (
+    banks,
+    broadcast,
+    connections,
+    effects,
+    favorites,
+    health,
+    legacy,
+    lv2,
+    pedalboard,
+    snapshots,
+    system,
+    updates,
+    utilities,
 )
 from src.mod_ui.services.websocket_gateway.services.connection_manager import (
     ConnectionManager,
@@ -36,12 +54,13 @@ from src.mod_ui.services.websocket_gateway.utils.event_types import EventType
 connection_manager: Optional[ConnectionManager] = None
 event_router: Optional[EventRouter] = None
 redis_subscriber: Optional[RedisEventSubscriber] = None
+service_client: Optional[ServiceClient] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan context manager for startup and shutdown"""
-    global connection_manager, event_router, redis_subscriber
+    global connection_manager, event_router, redis_subscriber, service_client
 
     logger = logging.getLogger(__name__)
     logger.info("Starting WebSocket Gateway Service...")
@@ -57,19 +76,26 @@ async def lifespan(app: FastAPI):
         # Initialize Redis event subscriber
         redis_subscriber = RedisEventSubscriber(event_router)
 
+        # Initialize service client for backend communication
+        service_client = ServiceClient()
+        logger.info("Service client initialized")
+
         # Store services in app state for access from endpoints
         app.state.connection_manager = connection_manager
         app.state.event_router = event_router
         app.state.redis_subscriber = redis_subscriber
+        app.state.service_client = service_client
 
-        # Start services in background after HTTP server is ready
-        def start_background_services():
-            asyncio.create_task(event_router.start())
-            asyncio.create_task(redis_subscriber.start())
-            logger.info("Background services started")
+        # Inject services into routers
+        health.inject_services(connection_manager, event_router, redis_subscriber)
+        connections.inject_services(connection_manager)
+        broadcast.inject_services(connection_manager, event_router)
+        legacy.inject_services(connection_manager)
+        system.inject_services(service_client)
 
-        # Schedule services to start after yield
-        asyncio.get_event_loop().call_soon(start_background_services)
+        # Start services synchronously before yielding
+        await event_router.start()
+        await redis_subscriber.start()
 
         logger.info("WebSocket Gateway Service startup complete")
 
@@ -99,22 +125,65 @@ async def lifespan(app: FastAPI):
         logger.info("WebSocket Gateway Service shutdown complete")
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan context manager for startup and shutdown"""
+    global connection_manager, event_router, service_client
+
+    logger = logging.getLogger(__name__)
+    logger.info("Starting WebSocket Gateway Service...")
+
+    try:
+        # Initialize connection manager (lightweight, no async operations)
+        connection_manager = ConnectionManager()
+        logger.info("Connection manager initialized")
+
+        # Initialize event router (lightweight, creates task but doesn't block)
+        event_router = EventRouter(connection_manager)
+
+        # Initialize service client for backend communication
+        service_client = ServiceClient()
+        logger.info("Service client initialized")
+
+        # Store services in app state for access from endpoints
+        app.state.connection_manager = connection_manager
+        app.state.event_router = event_router
+        app.state.service_client = service_client
+
+        # Inject services into routers
+        health.inject_services(
+            connection_manager, event_router, None
+        )  # No redis subscriber yet
+        connections.inject_services(connection_manager)
+        broadcast.inject_services(connection_manager, event_router)
+        legacy.inject_services(connection_manager)
+        system.inject_services(service_client)
+
+        logger.info("WebSocket Gateway Service startup complete")
+
+    except Exception as e:
+        logger.error(f"Failed to start WebSocket Gateway Service: {e}")
+        raise
+
+    yield
+
+    logger.info("Shutting down WebSocket Gateway Service...")
+
+
 # Create FastAPI application
 app = FastAPI(
-    title="MOD UI WebSocket Gateway Service",
+    title="Madeline Web UI Gateway",
     description="Dedicated real-time communication hub for all MOD UI services",
     version="1.0.0",
     lifespan=lifespan,
 )
 
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Include API routers
+app.include_router(health.router, prefix="/api/health", tags=["health"])
+app.include_router(system.router, prefix="/api/system", tags=["system"])
+app.include_router(connections.router, prefix="/api/connections", tags=["connections"])
+app.include_router(broadcast.router, prefix="/api/broadcast", tags=["broadcast"])
+app.include_router(legacy.router, prefix="/api/legacy", tags=["legacy"])
 
 
 @app.get("/ping")
@@ -123,94 +192,10 @@ async def ping():
     return {"status": "ok", "service": "websocket-gateway"}
 
 
-@app.get("/status")
-async def status():
-    """Detailed service status"""
-    global connection_manager, event_router, redis_subscriber
-
-    status_info = {
-        "service": "websocket-gateway",
-        "version": "1.0.0",
-        "status": "running",
-        "timestamp": datetime.now().isoformat(),
-    }
-
-    if connection_manager:
-        stats = await connection_manager.get_stats()
-        status_info.update(
-            {
-                "total_connections": stats.total_connections,
-                "active_connections": stats.active_connections,
-                "total_messages_sent": stats.total_messages_sent,
-                "total_messages_received": stats.total_messages_received,
-            }
-        )
-
-    if event_router:
-        router_stats = await event_router.get_stats()
-        status_info.update(
-            {
-                "events_processed": router_stats.events_processed,
-                "active_subscriptions": router_stats.active_subscriptions,
-            }
-        )
-
-    if redis_subscriber:
-        status_info["redis_connected"] = redis_subscriber.is_connected()
-
-    return status_info
-
-
-@app.get("/connections")
-async def list_connections():
-    """List all active WebSocket connections"""
-    global connection_manager
-
-    if not connection_manager:
-        return {"error": "Connection manager not available"}
-
-    connections = await connection_manager.get_connection_info()
-    return {
-        "success": True,
-        "connections": connections,
-        "count": len(connections),
-    }
-
-
-@app.post("/broadcast")
-async def broadcast_message(message: Dict[str, Any]):
-    """Broadcast a message to all connected clients"""
-    global connection_manager
-
-    if not connection_manager:
-        return {"error": "Connection manager not available"}
-
-    count = await connection_manager.broadcast_to_all(message)
-    return {
-        "success": True,
-        "message": "Message broadcast",
-        "clients_reached": count,
-    }
-
-
-@app.post("/broadcast/{event_type}")
-async def broadcast_to_subscribers(event_type: str, message: Dict[str, Any]):
-    """Broadcast a message to clients subscribed to specific event type"""
-    global event_router
-
-    if not event_router:
-        return {"error": "Event router not available"}
-
-    try:
-        event_type_enum = EventType(event_type)
-        count = await event_router.broadcast_to_subscribers(event_type_enum, message)
-        return {
-            "success": True,
-            "message": f"Message broadcast to {event_type} subscribers",
-            "clients_reached": count,
-        }
-    except ValueError:
-        return {"error": f"Invalid event type: {event_type}"}
+@app.get("/ping")
+async def ping():
+    """Health check endpoint"""
+    return {"status": "ok", "service": "websocket-gateway"}
 
 
 # Client management endpoints (from Session Service v2 realtime.py)
@@ -384,178 +369,6 @@ async def publish_event(event_data: Dict[str, Any]):
         return {"error": f"Invalid event type: {event_type}"}
     except Exception as e:
         return {"error": f"Failed to publish event: {str(e)}"}
-
-
-# Legacy message endpoints
-
-
-@app.post("/legacy/stats")
-async def send_stats(stats_data: Dict[str, Any]):
-    """Send legacy stats message"""
-    global connection_manager
-
-    if not connection_manager:
-        return {"error": "Connection manager not available"}
-
-    try:
-        cpu_load = float(stats_data.get("cpu_load", 0.0))
-        xruns = int(stats_data.get("xruns", 0))
-
-        count = await connection_manager.send_stats_message(cpu_load, xruns)
-
-        return {
-            "success": True,
-            "message": "Stats sent",
-            "clients_reached": count,
-        }
-    except Exception as e:
-        return {"error": f"Failed to send stats: {str(e)}"}
-
-
-@app.post("/legacy/sys_stats")
-async def send_sys_stats(sys_stats_data: Dict[str, Any]):
-    """Send legacy system stats message"""
-    global connection_manager
-
-    if not connection_manager:
-        return {"error": "Connection manager not available"}
-
-    try:
-        mem_load = float(sys_stats_data.get("mem_load", 0.0))
-        cpu_freq = str(sys_stats_data.get("cpu_freq", "0"))
-        cpu_temp = str(sys_stats_data.get("cpu_temp", "0"))
-
-        count = await connection_manager.send_sys_stats_message(
-            mem_load, cpu_freq, cpu_temp
-        )
-
-        return {
-            "success": True,
-            "message": "System stats sent",
-            "clients_reached": count,
-        }
-    except Exception as e:
-        return {"error": f"Failed to send system stats: {str(e)}"}
-
-
-@app.post("/legacy/transport")
-async def send_transport(transport_data: Dict[str, Any]):
-    """Send legacy transport message"""
-    global connection_manager
-
-    if not connection_manager:
-        return {"error": "Connection manager not available"}
-
-    try:
-        rolling = bool(transport_data.get("rolling", False))
-        bpb = float(transport_data.get("bpb", 4.0))
-        bpm = float(transport_data.get("bpm", 120.0))
-        sync = str(transport_data.get("sync", "none"))
-
-        count = await connection_manager.send_transport_message(rolling, bpb, bpm, sync)
-
-        return {
-            "success": True,
-            "message": "Transport sent",
-            "clients_reached": count,
-        }
-    except Exception as e:
-        return {"error": f"Failed to send transport: {str(e)}"}
-
-
-@app.post("/legacy/loading_start")
-async def send_loading_start(loading_data: Dict[str, Any]):
-    """Send legacy loading start message"""
-    global connection_manager
-
-    if not connection_manager:
-        return {"error": "Connection manager not available"}
-
-    try:
-        empty = bool(loading_data.get("empty", True))
-        modified = bool(loading_data.get("modified", False))
-
-        count = await connection_manager.send_loading_start_message(empty, modified)
-
-        return {
-            "success": True,
-            "message": "Loading start sent",
-            "clients_reached": count,
-        }
-    except Exception as e:
-        return {"error": f"Failed to send loading start: {str(e)}"}
-
-
-@app.post("/legacy/loading_end")
-async def send_loading_end(loading_data: Dict[str, Any]):
-    """Send legacy loading end message"""
-    global connection_manager
-
-    if not connection_manager:
-        return {"error": "Connection manager not available"}
-
-    try:
-        snapshot_id = int(loading_data.get("snapshot_id", 0))
-
-        count = await connection_manager.send_loading_end_message(snapshot_id)
-
-        return {
-            "success": True,
-            "message": "Loading end sent",
-            "clients_reached": count,
-        }
-    except Exception as e:
-        return {"error": f"Failed to send loading end: {str(e)}"}
-
-
-# Health and monitoring endpoints
-
-
-@app.get("/health")
-async def health_check():
-    """Check health of WebSocket gateway services"""
-    global connection_manager, event_router, redis_subscriber
-
-    try:
-        health_info = {
-            "success": True,
-            "health": "healthy",
-            "services": {},
-            "timestamp": datetime.now().isoformat(),
-        }
-
-        if connection_manager:
-            stats = await connection_manager.get_stats()
-            health_info["services"]["connection_manager"] = "healthy"
-            health_info["connected_clients"] = stats.active_connections
-        else:
-            health_info["services"]["connection_manager"] = "unavailable"
-
-        if event_router:
-            health_info["services"]["event_router"] = "healthy"
-        else:
-            health_info["services"]["event_router"] = "unavailable"
-
-        if redis_subscriber:
-            health_info["services"]["redis_subscriber"] = (
-                "healthy" if redis_subscriber.is_connected() else "disconnected"
-            )
-        else:
-            health_info["services"]["redis_subscriber"] = "unavailable"
-
-        return health_info
-
-    except Exception as e:
-        return {
-            "success": False,
-            "health": "unhealthy",
-            "error": str(e),
-            "services": {
-                "connection_manager": "unknown",
-                "event_router": "unknown",
-                "redis_subscriber": "unknown",
-            },
-        }
 
 
 @app.websocket("/ws")

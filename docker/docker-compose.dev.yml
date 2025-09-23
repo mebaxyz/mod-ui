@@ -151,11 +151,11 @@ services:
       retries: 3
       start_period: 10s
 
-  mod-websocket-gateway:
+  mod-webui-gateway:
     build:
       context: ..
-      dockerfile: docker/websocket_gateway/Dockerfile
-    container_name: mod-ui-websocket-gateway
+      dockerfile: docker/webui_gateway/Dockerfile
+    container_name: mod-ui-webui-gateway
     restart: unless-stopped
     ports:
       - "8081:8081"  # WebSocket Gateway service port
