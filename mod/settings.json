@@ -1,0 +1,95 @@
+{
+  "environment": {
+    "dev_environment": false,
+    "dev_hmi": false,
+    "dev_host": false,
+    "dev_api": false,
+    "desktop": false,
+    "log_level": 0
+  },
+  "device": {
+    "api_key": null,
+    "device_key": null,
+    "device_tag": null,
+    "device_uid": null,
+    "image_version": null,
+    "hardware_desc_file": "/etc/mod-hardware-descriptor.json"
+  },
+  "paths": {
+    "data_dir": "~/data",
+    "cache_dir": "~/data/.cache",
+    "user_files_dir": "/data/user-files",
+    "keys_path": "~/data/keys/",
+    "download_tmp_dir": "/tmp/mod-ui",
+    "pedalboard_tmp_dir": "~/data/pedalboard-tmp-data",
+    "lv2_plugin_dir": "~/.lv2",
+    "lv2_pedalboards_dir": "~/.pedalboards",
+    "lv2_factory_pedalboards_dir": "/usr/share/mod/pedalboards",
+    "html_dir": "/usr/local/share/mod/html/"
+  },
+  "files": {
+    "favorites_json": "~/data/favorites.json",
+    "last_state_json": "~/data/last.json",
+    "preferences_json": "~/data/prefs.json",
+    "user_id_json": "~/data/user-id.json",
+    "user_banks_json": "~/data/banks.json",
+    "factory_banks_json": "/usr/share/mod/banks.json",
+    "default_pedalboard": "~/.pedalboards/default.pedalboard",
+    "default_pedalboard_copy": "/usr/local/share/mod/default.pedalboard",
+    "default_icon_template": "/usr/local/share/mod/html/resources/templates/pedal-default.html",
+    "default_settings_template": "/usr/local/share/mod/html/resources/settings.html",
+    "default_icon_image": {
+      "thumbnail": "/usr/local/share/mod/html/resources/pedals/default-thumbnail.png",
+      "screenshot": "/usr/local/share/mod/html/resources/pedals/default-screenshot.png"
+    },
+    "capture_path": "/tmp/capture.ogg",
+    "playback_path": "/tmp/playback.ogg",
+    "update_mod_os_file": "/data/modduo.tar",
+    "update_mod_os_helper_file": "/data/boot-restore",
+    "update_cc_firmware_file": "/tmp/cc-firmware.bin",
+    "using_256_frames_file": "/data/using-256-frames"
+  },
+  "hardware": {
+    "hmi_baud_rate": 10000000,
+    "hmi_serial_port": "/dev/ttyUSB0",
+    "hmi_timeout": 0,
+    "model_cpu": null,
+    "model_type": null,
+    "device_webserver_port": 80,
+    "device_host_port": 5555
+  },
+  "cloud": {
+    "http_address": "https://api.mod.audio/v2",
+    "labs_http_address": "https://api-labs.mod.audio/v2",
+    "plugins_http_address": "https://pedalboards.mod.audio/plugins",
+    "pedalboards_http_address": "https://pedalboards.mod.audio",
+    "pedalboards_labs_http_address": "https://pedalboards-labs.mod.audio",
+    "controlchain_http_address": "https://download.mod.audio/releases/cc-firmware/v3"
+  },
+  "midi": {
+    "beat_clock_sender_uri": "urn:mod:mclk",
+    "beat_clock_sender_instance_id": 9993,
+    "beat_clock_sender_output_port": "mclk"
+  },
+  "tuner": {
+    "plugin": "gxtuner",
+    "instance_id": 9994,
+    "uri": "urn:mod:gxtuner",
+    "input_port": "in",
+    "monitor_port": "FREQ"
+  },
+  "pedalboard": {
+    "instance": "/pedalboard",
+    "instance_id": 9995,
+    "uri": "urn:mod:pedalboard",
+    "untitled_name": "Untitled Pedalboard",
+    "default_snapshot_name": "Default"
+  },
+  "services": {
+    "hardware_service_url": "http://localhost:8003",
+    "session_service_url": "http://localhost:8002",
+    "session_service_timeout": 10,
+    "redis_host": "localhost",
+    "redis_port": 6379
+  }
+}

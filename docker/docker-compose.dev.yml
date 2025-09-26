@@ -185,6 +185,31 @@ services:
       retries: 3
       start_period: 10s
 
+  mod-config-service:
+    build:
+      context: ..
+      dockerfile: docker/config_service/Dockerfile
+    container_name: mod-ui-config-service
+    restart: unless-stopped
+    ports:
+      - "8083:8083"  # Configuration service port
+    volumes:
+      - ../src:/app/src
+      - ../mod:/app/mod
+    environment:
+      - CONFIG_SERVICE_HOST=0.0.0.0
+      - CONFIG_SERVICE_PORT=8083
+      - LOG_LEVEL=INFO
+      - PYTHONPATH=/app/src:/app
+    networks:
+      - mod-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
   redis:
     image: redis:7-alpine
     container_name: mod-ui-redis
