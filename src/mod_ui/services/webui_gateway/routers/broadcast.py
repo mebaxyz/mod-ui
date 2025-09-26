@@ -18,7 +18,7 @@ router = APIRouter(tags=["broadcast"])
 connection_manager = None
 event_router = None
 
-from src.mod_ui.services.websocket_gateway.utils.event_types import EventType
+from src.mod_ui.services.webui_gateway.utils.event_types import EventType
 
 
 def inject_services(cm, er):

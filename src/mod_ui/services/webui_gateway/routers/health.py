@@ -31,7 +31,7 @@ def inject_services(cm, er, rs):
 @router.get("/ping")
 async def ping() -> Dict[str, Any]:
     """Health check endpoint"""
-    return {"status": "ok", "service": "websocket-gateway"}
+    return {"status": "ok", "service": "webui-gateway"}
 
 
 @router.get("/status")
@@ -47,7 +47,7 @@ async def status() -> Dict[str, Any]:
     }
 
     if connection_manager:
-        stats = await connection_manager.get_stats()
+        stats = connection_manager.get_stats()
         status_info.update(
             {
                 "total_connections": stats.total_connections,
@@ -58,7 +58,7 @@ async def status() -> Dict[str, Any]:
         )
 
     if event_router:
-        router_stats = await event_router.get_stats()
+        router_stats = event_router.get_stats()
         status_info.update(
             {
                 "events_processed": router_stats.events_processed,
@@ -86,7 +86,7 @@ async def health_check() -> Dict[str, Any]:
         }
 
         if connection_manager:
-            stats = await connection_manager.get_stats()
+            stats = connection_manager.get_stats()
             health_info["services"]["connection_manager"] = "healthy"
             health_info["connected_clients"] = stats.active_connections
         else:

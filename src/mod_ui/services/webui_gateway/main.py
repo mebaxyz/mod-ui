@@ -53,10 +53,10 @@ service_client: Optional[ServiceClient] = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan context manager for startup and shutdown"""
-    global connection_manager, event_router, service_client
+    global connection_manager, event_router, redis_subscriber, service_client
 
     logger = logging.getLogger(__name__)
-    logger.info("Starting WebSocket Gateway Service...")
+    logger.info("Starting WebUI Gateway Service...")
 
     try:
         # Initialize connection manager (lightweight, no async operations)
@@ -66,6 +66,9 @@ async def lifespan(app: FastAPI):
         # Initialize event router (lightweight, creates task but doesn't block)
         event_router = EventRouter(connection_manager)
 
+        # Initialize Redis event subscriber
+        redis_subscriber = RedisEventSubscriber(event_router)
+
         # Initialize service client for backend communication
         service_client = ServiceClient()
         logger.info("Service client initialized")
@@ -73,42 +76,83 @@ async def lifespan(app: FastAPI):
         # Store services in app state for access from endpoints
         app.state.connection_manager = connection_manager
         app.state.event_router = event_router
+        app.state.redis_subscriber = redis_subscriber
         app.state.service_client = service_client
 
         # Inject services into routers
-        health.inject_services(
-            connection_manager, event_router, None
-        )  # No redis subscriber yet
+        health.inject_services(connection_manager, event_router, redis_subscriber)
         connections.inject_services(connection_manager)
         broadcast.inject_services(connection_manager, event_router)
         legacy.inject_services(connection_manager)
         system.inject_services(service_client)
 
-        logger.info("WebSocket Gateway Service startup complete")
+        logger.info("WebUI Gateway Service startup complete")
 
     except Exception as e:
-        logger.error(f"Failed to start WebSocket Gateway Service: {e}")
+        logger.error(f"Failed to start WebUI Gateway Service: {e}")
         raise
 
     yield
 
-    logger.info("Shutting down WebSocket Gateway Service...")
+    # Start background services after HTTP server is ready
+    async def start_background_services():
+        try:
+            await event_router.start()
+            await redis_subscriber.start()
+            logger.info("Background services started")
+        except Exception as e:
+            logger.error(f"Failed to start background services: {e}")
+
+    asyncio.create_task(start_background_services())
+
+    logger.info("Shutting down WebUI Gateway Service...")
+
+    # Close Redis subscriber
+    if redis_subscriber:
+        try:
+            await redis_subscriber.stop()
+        except Exception as e:
+            logger.error(f"Error stopping Redis subscriber: {e}")
+
+    # Close event router
+    if event_router:
+        try:
+            await event_router.stop()
+        except Exception as e:
+            logger.error(f"Error stopping event router: {e}")
+
+    logger.info("WebUI Gateway Service shutdown complete")
 
 
 # Create FastAPI application
 app = FastAPI(
-    title="Madeline Web UI Gateway",
+    title="MOD UI WebUI Gateway",
     description="Dedicated real-time communication hub for all MOD UI services",
     version="1.0.0",
     lifespan=lifespan,
 )
 
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Configure appropriately for production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Include API routers
 app.include_router(health.router, prefix="/api/health", tags=["health"])
+app.include_router(
+    health.router, tags=["health"]
+)  # Also include at root level for /ping
 app.include_router(system.router, prefix="/api/system", tags=["system"])
 app.include_router(connections.router, prefix="/api/connections", tags=["connections"])
 app.include_router(broadcast.router, prefix="/api/broadcast", tags=["broadcast"])
 app.include_router(legacy.router, prefix="/api/legacy", tags=["legacy"])
+
+
+# WebSocket endpoint and other endpoints will follow...
 
 
 @app.websocket("/ws")
@@ -129,7 +173,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
         # Register connection
         client_id = await connection_manager.add_connection(websocket)
-        logger.info(f"WebSocket client connected: {client_id}")
+        logger.info("WebSocket client connected: %s", client_id)
 
         # Send initial welcome message
         await connection_manager.send_to_client(
@@ -204,7 +248,7 @@ async def main():
     server = uvicorn.Server(config)
 
     try:
-        logger.info("Starting WebSocket Gateway Service on http://0.0.0.0:8081")
+        logger.info("Starting WebUI Gateway Service on http://0.0.0.0:8081")
         await server.serve()
     except Exception as e:
         logger.error(f"Failed to start server: {e}")

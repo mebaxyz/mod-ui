@@ -12,8 +12,8 @@ from typing import Dict, List, Optional, Set
 
 import redis.asyncio as redis
 
-from src.mod_ui.services.websocket_gateway.services.event_router import EventRouter
-from src.mod_ui.services.websocket_gateway.utils import config
+from src.mod_ui.services.webui_gateway.services.event_router import EventRouter
+from src.mod_ui.services.webui_gateway.utils import config
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ class RedisEventSubscriber:
         self.reconnect_task: Optional[asyncio.Task] = None
 
         # Connection state
-        self.is_connected = False
+        self._is_connected = False
         self.connection_attempts = 0
         self.last_connection_attempt = 0.0
 
@@ -49,7 +49,7 @@ class RedisEventSubscriber:
 
     def is_connected(self) -> bool:
         """Check if Redis subscriber is connected"""
-        return self.is_connected
+        return self._is_connected
 
     async def start(self):
         """Start the Redis subscriber"""
@@ -96,7 +96,7 @@ class RedisEventSubscriber:
     async def subscribe_to_channel(self, channel: str):
         """Subscribe to a specific Redis channel"""
 
-        if not self.is_connected:
+        if not self._is_connected:
             logger.warning(f"Cannot subscribe to {channel}: not connected to Redis")
             return False
 
@@ -113,7 +113,7 @@ class RedisEventSubscriber:
     async def unsubscribe_from_channel(self, channel: str):
         """Unsubscribe from a specific Redis channel"""
 
-        if not self.is_connected:
+        if not self._is_connected:
             return False
 
         try:
@@ -129,7 +129,7 @@ class RedisEventSubscriber:
     async def subscribe_to_pattern(self, pattern: str):
         """Subscribe to Redis channels matching a pattern"""
 
-        if not self.is_connected:
+        if not self._is_connected:
             logger.warning(
                 f"Cannot subscribe to pattern {pattern}: not connected to Redis"
             )
@@ -148,7 +148,7 @@ class RedisEventSubscriber:
     async def unsubscribe_from_pattern(self, pattern: str):
         """Unsubscribe from Redis pattern"""
 
-        if not self.is_connected:
+        if not self._is_connected:
             return False
 
         try:
@@ -167,7 +167,7 @@ class RedisEventSubscriber:
         uptime = time.time() - self.start_time
 
         return {
-            "is_connected": self.is_connected,
+            "is_connected": self._is_connected,
             "subscribed_channels": list(self.subscribed_channels),
             "subscription_patterns": list(self.subscription_patterns),
             "messages_received": self.messages_received,
@@ -205,7 +205,7 @@ class RedisEventSubscriber:
             # Create pubsub client
             self.pubsub = self.redis_client.pubsub()
 
-            self.is_connected = True
+            self._is_connected = True
             self.connection_errors = 0
 
             logger.info(
@@ -222,7 +222,7 @@ class RedisEventSubscriber:
     async def _disconnect(self):
         """Disconnect from Redis"""
 
-        self.is_connected = False
+        self._is_connected = False
 
         try:
             if self.pubsub:
@@ -242,7 +242,7 @@ class RedisEventSubscriber:
     async def _setup_default_subscriptions(self):
         """Setup default Redis channel subscriptions"""
 
-        if not self.is_connected:
+        if not self._is_connected:
             return
 
         # Subscribe to all MOD UI events
@@ -266,7 +266,7 @@ class RedisEventSubscriber:
 
         try:
             while True:
-                if not self.is_connected or not self.pubsub:
+                if not self._is_connected or not self.pubsub:
                     await asyncio.sleep(1)
                     continue
 
@@ -283,7 +283,7 @@ class RedisEventSubscriber:
                     continue
                 except redis.ConnectionError as e:
                     logger.error(f"Redis connection error: {e}")
-                    self.is_connected = False
+                    self._is_connected = False
                     await asyncio.sleep(1)
                 except Exception as e:
                     logger.error(f"Error in message loop: {e}")
@@ -336,7 +336,7 @@ class RedisEventSubscriber:
             while True:
                 await asyncio.sleep(10)  # Check every 10 seconds
 
-                if not self.is_connected:
+                if not self._is_connected:
                     # Only reconnect if enough time has passed
                     if time.time() - self.last_connection_attempt > 5:
                         logger.info("Attempting to reconnect to Redis...")

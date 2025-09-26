@@ -32,7 +32,7 @@ async def list_connections() -> Dict[str, Any]:
     if not connection_manager:
         return {"error": "Connection manager not available"}
 
-    connections = await connection_manager.get_connection_info()
+    connections = connection_manager.get_connection_info()
     return {
         "success": True,
         "connections": connections,
@@ -49,16 +49,12 @@ async def list_connected_clients() -> Dict[str, Any]:
         return {"error": "Connection manager not available"}
 
     try:
-        connections = await connection_manager.get_connection_info()
+        connections = connection_manager.get_connection_info()
         clients = [
             {
                 "client_id": conn["client_id"],
-                "connected_at": datetime.fromtimestamp(
-                    conn["connected_at"]
-                ).isoformat(),
-                "last_activity": datetime.fromtimestamp(
-                    conn["last_activity"]
-                ).isoformat(),
+                "connected_at": conn["connected_at"],
+                "last_activity": conn["last_activity"],
                 "messages_sent": conn["messages_sent"],
                 "messages_received": conn["messages_received"],
                 "subscription_count": len(conn.get("subscriptions", [])),
@@ -68,11 +64,11 @@ async def list_connected_clients() -> Dict[str, Any]:
 
         return {
             "success": True,
-            "clients": clients,
+            "connections": clients,
             "count": len(clients),
         }
     except Exception as e:
-        return {"error": f"Failed to list clients: {str(e)}"}
+        return {"error": f"Failed to list connections: {str(e)}"}
 
 
 @router.get("/clients/{client_id}")
@@ -84,7 +80,7 @@ async def get_client_info(client_id: str) -> Dict[str, Any]:
         return {"error": "Connection manager not available"}
 
     try:
-        connections = await connection_manager.get_connection_info()
+        connections = connection_manager.get_connection_info()
         client_info = next(
             (conn for conn in connections if conn["client_id"] == client_id), None
         )

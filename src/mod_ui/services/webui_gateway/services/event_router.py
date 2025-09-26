@@ -10,11 +10,11 @@ import logging
 import time
 from typing import Callable, Dict, List, Optional, Set
 
-from src.mod_ui.services.websocket_gateway.models import EventRouterStats
-from src.mod_ui.services.websocket_gateway.services.connection_manager import (
+from src.mod_ui.services.webui_gateway.models import EventRouterStats
+from src.mod_ui.services.webui_gateway.services.connection_manager import (
     ConnectionManager,
 )
-from src.mod_ui.services.websocket_gateway.utils import EventPriority, EventType, config
+from src.mod_ui.services.webui_gateway.utils import EventPriority, EventType, config
 
 logger = logging.getLogger(__name__)
 
@@ -329,9 +329,7 @@ class EventRouter:
         except json.JSONDecodeError:
             logger.error(f"Invalid JSON message from {client_id}: {message}")
 
-    def get_stats(self):
-        """Get event router statistics (non-async version for compatibility)"""
-        return self.get_stats()
+    def _setup_default_filters(self):
         """Setup default event filters and transformers"""
 
         # Add default system stats filter

@@ -15,13 +15,13 @@ from typing import Any, Dict, List, Optional, Set
 from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
-from src.mod_ui.services.websocket_gateway.models import (
+from src.mod_ui.services.webui_gateway.models import (
     ClientConnection,
     EventSubscription,
     GatewayMessage,
     GatewayStats,
 )
-from src.mod_ui.services.websocket_gateway.utils import EventType, MessageType, config
+from src.mod_ui.services.webui_gateway.utils import EventType, MessageType, config
 
 logger = logging.getLogger(__name__)
 
