@@ -324,10 +324,65 @@ class EventRouter:
     async def handle_client_message(self, client_id: str, message: str):
         """Handle incoming message from client"""
         try:
+            # Try to parse as JSON first (for new message format)
             data = json.loads(message)
             await self.connection_manager.handle_client_message(client_id, data)
         except json.JSONDecodeError:
-            logger.error(f"Invalid JSON message from {client_id}: {message}")
+            # Handle legacy plain text messages
+            await self._handle_legacy_message(client_id, message)
+
+    async def _handle_legacy_message(self, client_id: str, message: str):
+        """Handle legacy plain text messages like 'data_ready 1', 'ping', 'pong'"""
+        parts = message.strip().split(" ", 1)
+        if not parts:
+            return
+
+        command = parts[0].lower()
+        args = parts[1] if len(parts) > 1 else ""
+
+        logger.debug(f"Received legacy message from {client_id}: {command} {args}")
+
+        if command == "data_ready":
+            # Client is acknowledging data_ready - respond with same counter
+            counter = args.strip() if args else "1"
+            await self.connection_manager.send_to_client(
+                client_id, f"data_ready {counter}"
+            )
+
+        elif command == "ping":
+            # Client sent ping - respond with pong
+            await self.connection_manager.send_to_client(client_id, "pong")
+
+        elif command == "pong":
+            # Client responded to our ping - update connection status
+            if client_id in self.connection_manager.connections:
+                self.connection_manager.connections[client_id].last_seen = time.time()
+
+        elif command.startswith("transport-"):
+            # Handle transport commands
+            if command == "transport-rolling":
+                # Parse transport rolling state
+                rolling = args == "1"
+                logger.debug(f"Client {client_id} set transport rolling: {rolling}")
+
+            elif command == "transport-bpm":
+                # Parse transport BPM
+                try:
+                    bpm = float(args)
+                    logger.debug(f"Client {client_id} set transport BPM: {bpm}")
+                except ValueError:
+                    logger.warning(f"Invalid BPM value from {client_id}: {args}")
+
+            elif command == "transport-bpb":
+                # Parse transport beats per bar
+                try:
+                    bpb = float(args)
+                    logger.debug(f"Client {client_id} set transport BPB: {bpb}")
+                except ValueError:
+                    logger.warning(f"Invalid BPB value from {client_id}: {args}")
+
+        else:
+            logger.warning(f"Unknown legacy command from {client_id}: {command}")
 
     def _setup_default_filters(self):
         """Setup default event filters and transformers"""

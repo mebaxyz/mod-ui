@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MOD UI WebSocket Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .connected { background-color: #d4edda; color: #155724; }
+        .disconnected { background-color: #f8d7da; color: #721c24; }
+        .message { background-color: #f8f9fa; padding: 5px; margin: 2px 0; border-left: 3px solid #007bff; }
+        #messages { height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; }
+    </style>
+</head>
+<body>
+    <h1>MOD UI WebSocket Gateway Test</h1>
+    
+    <div id="status" class="status disconnected">Disconnected</div>
+    
+    <div>
+        <button onclick="connect()">Connect</button>
+        <button onclick="disconnect()">Disconnect</button>
+        <button onclick="sendDataReady()">Send data_ready</button>
+        <button onclick="sendPing()">Send ping</button>
+    </div>
+    
+    <h2>Messages:</h2>
+    <div id="messages"></div>
+    
+    <script>
+        let ws = null;
+        
+        function updateStatus(connected, message) {
+            const status = document.getElementById('status');
+            status.className = 'status ' + (connected ? 'connected' : 'disconnected');
+            status.textContent = message;
+        }
+        
+        function addMessage(message) {
+            const messages = document.getElementById('messages');
+            const div = document.createElement('div');
+            div.className = 'message';
+            div.textContent = new Date().toISOString() + ': ' + message;
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
+        }
+        
+        function connect() {
+            if (ws) {
+                ws.close();
+            }
+            
+            ws = new WebSocket("ws://localhost/websocket");
+            
+            ws.onopen = function(event) {
+                updateStatus(true, "Connected to WebSocket");
+                addMessage("WebSocket connection opened");
+            };
+            
+            ws.onmessage = function(event) {
+                addMessage("Received: " + event.data);
+            };
+            
+            ws.onclose = function(event) {
+                updateStatus(false, "Disconnected (code: " + event.code + ")");
+                addMessage("WebSocket connection closed: " + event.code + " " + event.reason);
+            };
+            
+            ws.onerror = function(error) {
+                updateStatus(false, "Error occurred");
+                addMessage("WebSocket error: " + error);
+            };
+        }
+        
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+        
+        function sendDataReady() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send("data_ready 1");
+                addMessage("Sent: data_ready 1");
+            } else {
+                addMessage("Not connected!");
+            }
+        }
+        
+        function sendPing() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send("ping");
+                addMessage("Sent: ping");
+            } else {
+                addMessage("Not connected!");
+            }
+        }
+        
+        // Auto-connect when page loads
+        connect();
+    </script>
+</body>
+</html>

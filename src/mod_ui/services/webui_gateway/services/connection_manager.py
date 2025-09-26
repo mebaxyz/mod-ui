@@ -33,6 +33,9 @@ class ConnectionManager:
         # Active connections
         self.connections: Dict[str, ClientConnection] = {}
 
+        # WebSocket objects (stored separately from Pydantic models)
+        self.websockets: Dict[str, WebSocket] = {}
+
         # Subscription mappings
         self.subscriptions: Dict[EventType, Set[str]] = defaultdict(set)
         self.client_subscriptions: Dict[str, Set[EventType]] = defaultdict(set)
@@ -66,20 +69,16 @@ class ConnectionManager:
         # Accept the WebSocket connection
         await websocket.accept()
 
-        # Create client connection record
+        # Create client connection record (without websocket field)
         connection = ClientConnection(
             client_id=client_id,
-            websocket=websocket,
-            connected_at=time.time(),
-            last_seen=time.time(),
-            subscriptions=[],
-            is_active=True,
             user_agent=websocket.headers.get("user-agent", "unknown"),
             ip_address=websocket.client.host if websocket.client else "unknown",
         )
 
-        # Store connection
+        # Store connection and websocket separately
         self.connections[client_id] = connection
+        self.websockets[client_id] = websocket
         self.connection_count += 1
 
         logger.info(f"Client {client_id} connected from {connection.ip_address}")
@@ -104,20 +103,22 @@ class ConnectionManager:
         if client_id not in self.connections:
             return
 
-        connection = self.connections[client_id]
-
         # Close WebSocket if still open
-        try:
-            if connection.websocket.client_state.name in ["CONNECTED", "CONNECTING"]:
-                await connection.websocket.close(code=code, reason=reason)
-        except Exception as e:
-            logger.warning(f"Error closing WebSocket for {client_id}: {e}")
+        websocket = self.websockets.get(client_id)
+        if websocket:
+            try:
+                if websocket.client_state.name in ["CONNECTED", "CONNECTING"]:
+                    await websocket.close(code=code, reason=reason)
+            except Exception as e:
+                logger.warning(f"Error closing WebSocket for {client_id}: {e}")
 
         # Remove subscriptions
         await self._remove_all_subscriptions(client_id)
 
-        # Remove connection
+        # Remove connection and websocket
         del self.connections[client_id]
+        if client_id in self.websockets:
+            del self.websockets[client_id]
         self.connection_count -= 1
 
         # Clear message queue and counts
@@ -242,22 +243,25 @@ class ConnectionManager:
             logger.warning(f"Attempted to send to non-existent client: {client_id}")
             return False
 
+        websocket = self.websockets.get(client_id)
+        if not websocket:
+            logger.warning(f"WebSocket not found for client: {client_id}")
+            return False
+
         connection = self.connections[client_id]
         try:
             if isinstance(message, dict):
-                await connection.websocket.send_text(json.dumps(message))
+                await websocket.send_text(json.dumps(message))
             else:
                 # Support plain text messages for legacy compatibility
-                await connection.websocket.send_text(str(message))
+                await websocket.send_text(str(message))
 
-            connection.last_activity = time.time()
             connection.messages_sent += 1
-            self.stats.total_messages_sent += 1
             return True
 
         except Exception as e:
             logger.error(f"Failed to send message to client {client_id}: {e}")
-            await self.remove_connection(client_id)
+            await self.disconnect(client_id, reason="Send error")
             return False
 
     async def handle_client_message(self, client_id: str, message: dict):
@@ -533,11 +537,14 @@ class ConnectionManager:
                 self.message_queues[client_id].pop(0)  # Remove oldest
             return False
 
-        connection = self.connections[client_id]
+        websocket = self.websockets.get(client_id)
+        if not websocket:
+            logger.warning(f"WebSocket not found for client: {client_id}")
+            return False
 
         try:
             # Send message
-            await connection.websocket.send_text(json.dumps(message))
+            await websocket.send_text(json.dumps(message))
 
             # Update counters
             self.message_counts[client_id] += 1
@@ -555,22 +562,39 @@ class ConnectionManager:
             return False
 
     async def _send_status(self, client_id: str):
-        """Send status information to client"""
+        """Send initial status messages to client for compatibility"""
 
         connection = self.connections.get(client_id)
         if not connection:
             return
 
-        status_msg = {
-            "type": MessageType.STATUS,
-            "client_id": client_id,
-            "connected_at": connection.connected_at,
-            "subscriptions": [str(sub.event_type) for sub in connection.subscriptions],
-            "messages_received": self.message_counts.get(client_id, 0),
-            "timestamp": time.time(),
-        }
+        # Send initial loading sequence for frontend compatibility
+        # This matches what the original MOD UI server sends during initialization
 
-        await self._send_to_client(client_id, status_msg)
+        # Send loading_start message
+        await self.send_to_client(
+            client_id, "loading_start 1 0"
+        )  # empty=True, modified=False
+
+        # Small delay to ensure message order
+        await asyncio.sleep(0.01)
+
+        # Send basic stats (CPU 0%, 0 xruns)
+        await self.send_to_client(client_id, "stats 0.0 0")
+
+        # Send sys_stats (RAM 0%, CPU freq 0, temp 0)
+        await self.send_to_client(client_id, "sys_stats 0.0 0 0")
+
+        # Send transport state (stopped, 4/4, 120 BPM, no sync)
+        await self.send_to_client(client_id, "transport 0 4.0 120.0 none")
+
+        # Send truebypass state (both off)
+        await self.send_to_client(client_id, "truebypass 0 0")
+
+        # Send loading_end message to finish initialization
+        await self.send_to_client(client_id, "loading_end 0")  # snapshot_id=0
+
+        logger.info(f"Sent initialization sequence to client {client_id}")
 
     async def _remove_all_subscriptions(self, client_id: str):
         """Remove all subscriptions for a client"""

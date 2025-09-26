@@ -158,6 +158,17 @@ app.include_router(legacy.router, prefix="/api/legacy", tags=["legacy"])
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """Main WebSocket endpoint for client connections"""
+    await _handle_websocket(websocket)
+
+
+@app.websocket("/websocket")
+async def websocket_endpoint_legacy(websocket: WebSocket):
+    """Legacy WebSocket endpoint for backward compatibility"""
+    await _handle_websocket(websocket)
+
+
+async def _handle_websocket(websocket: WebSocket):
+    """Handle WebSocket connection logic"""
     global connection_manager, event_router
 
     logger = logging.getLogger(__name__)
@@ -169,10 +180,10 @@ async def websocket_endpoint(websocket: WebSocket):
     client_id = None
 
     try:
-        await websocket.accept()
+        # Don't call websocket.accept() here - connection_manager.connect() will do it
 
-        # Register connection
-        client_id = await connection_manager.add_connection(websocket)
+        # Register connection (this will call websocket.accept())
+        client_id = await connection_manager.connect(websocket)
         logger.info("WebSocket client connected: %s", client_id)
 
         # Send initial welcome message
@@ -213,7 +224,7 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.error(f"WebSocket connection error: {e}")
     finally:
         if client_id and connection_manager:
-            await connection_manager.remove_connection(client_id)
+            await connection_manager.disconnect(client_id)
 
 
 # Development server entry point
