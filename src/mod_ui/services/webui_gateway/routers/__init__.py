@@ -9,6 +9,7 @@ from .effects import router as effects_router
 from .favorites import router as favorites_router
 from .lv2 import router as lv2_router
 from .pedalboard import router as pedalboard_router
+from .session import router as session_router
 from .snapshots import router as snapshots_router
 from .system import router as system_router
 from .updates import router as updates_router
@@ -24,4 +25,5 @@ __all__ = [
     "updates_router",
     "utilities_router",
     "lv2_router",
+    "session_router",
 ]

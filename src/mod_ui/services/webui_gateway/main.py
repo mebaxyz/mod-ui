@@ -32,6 +32,7 @@ from src.mod_ui.services.webui_gateway.routers import (  # banks,; effects,; fav
     connections,
     health,
     legacy,
+    session,
     system,
 )
 from src.mod_ui.services.webui_gateway.services.connection_manager import (
@@ -70,8 +71,12 @@ async def lifespan(app: FastAPI):
         redis_subscriber = RedisEventSubscriber(event_router)
 
         # Initialize service client for backend communication
-        service_client = ServiceClient()
-        logger.info("Service client initialized")
+        redis_host = os.getenv("REDIS_HOST", "localhost")
+        redis_port = os.getenv("REDIS_PORT", "6379")
+        redis_db = os.getenv("REDIS_DB", "0")
+        redis_url = f"redis://{redis_host}:{redis_port}/{redis_db}"
+        service_client = ServiceClient(redis_url=redis_url)
+        logger.info(f"Service client initialized with Redis URL: {redis_url}")
 
         # Store services in app state for access from endpoints
         app.state.connection_manager = connection_manager
@@ -149,6 +154,7 @@ app.include_router(
 app.include_router(system.router, prefix="/api/system", tags=["system"])
 app.include_router(connections.router, prefix="/api/connections", tags=["connections"])
 app.include_router(broadcast.router, prefix="/api/broadcast", tags=["broadcast"])
+app.include_router(session.router, prefix="/api/session", tags=["session"])
 app.include_router(legacy.router, prefix="/api/legacy", tags=["legacy"])
 
 

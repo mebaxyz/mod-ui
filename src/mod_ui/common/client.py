@@ -89,12 +89,15 @@ class ServiceClient:
         request_timeout = timeout or self.default_timeout
 
         # Create request
-        request = ServiceRequest(
-            request_type=request_type,
-            data=data,
-            source_service="unknown",  # Will be set by calling service
-            correlation_id=correlation_id,
-        )
+        request_data = {
+            "request_type": request_type,
+            "data": data,
+            "source_service": "unknown",  # Will be set by calling service
+        }
+        if correlation_id is not None:
+            request_data["correlation_id"] = correlation_id
+
+        request = ServiceRequest(**request_data)
 
         # Create response queue for this correlation ID
         response_queue = asyncio.Queue()

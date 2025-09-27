@@ -61,8 +61,6 @@ services:
       dockerfile: docker/session_v2/Dockerfile
     container_name: mod-ui-session-v2
     restart: unless-stopped
-    ports:
-      - "8002:8002"  # Session service v2 port
     volumes:
       - ../src:/app/src
       - ../mod:/app/mod
@@ -71,8 +69,6 @@ services:
     environment:
       - MOD_DEV_ENVIRONMENT=1
       - MOD_LOG=1
-      - SESSION_SERVICE_HOST=0.0.0.0
-      - SESSION_SERVICE_PORT=8002
       - EVENT_BUS_TYPE=redis
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -83,7 +79,7 @@ services:
     networks:
       - mod-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/ping"]
+      test: ["CMD", "python", "-c", "import redis, os; redis.Redis(host=os.getenv('REDIS_HOST', 'redis')).ping()"]
       interval: 30s
       timeout: 10s
       retries: 3

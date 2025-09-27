@@ -26,6 +26,10 @@ class RequestType(str, Enum):
     UPDATE_SESSION_STATE = "update_session_state"
     GET_AUDIO_STATUS = "get_audio_status"
     CONTROL_TRANSPORT = "control_transport"
+    # Session service specific requests
+    GET_SESSION_STATUS = "get_session_status"
+    SET_SESSION_TEMPO = "set_session_tempo"
+    GET_SESSION_STATS = "get_session_stats"
 
 
 class ResponseStatus(str, Enum):

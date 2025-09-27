@@ -18,7 +18,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Install additional dependencies for WebSocket Gateway
 RUN pip install \
     redis \
-    websockets
+    websockets \
+    httpx
 
 # Copy application code
 COPY . .
