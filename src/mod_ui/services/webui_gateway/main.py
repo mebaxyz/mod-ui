@@ -27,9 +27,11 @@ from src.mod_ui.services.webui_gateway.models import (
 )
 
 # Import API routers
-from src.mod_ui.services.webui_gateway.routers import (  # banks,; effects,; favorites,; lv2,; pedalboard,; snapshots,; updates,; utilities
+from src.mod_ui.services.webui_gateway.routers import (
     broadcast,
+    config,
     connections,
+    effects,
     health,
     legacy,
     session,
@@ -90,6 +92,8 @@ async def lifespan(app: FastAPI):
         broadcast.inject_services(connection_manager, event_router)
         legacy.inject_services(connection_manager)
         system.inject_services(service_client)
+        session.inject_service_client(service_client)
+        config.inject_service_client(service_client)
 
         logger.info("WebUI Gateway Service startup complete")
 
@@ -155,6 +159,8 @@ app.include_router(system.router, prefix="/api/system", tags=["system"])
 app.include_router(connections.router, prefix="/api/connections", tags=["connections"])
 app.include_router(broadcast.router, prefix="/api/broadcast", tags=["broadcast"])
 app.include_router(session.router, prefix="/api/session", tags=["session"])
+app.include_router(config.router, prefix="/api/config", tags=["config"])
+app.include_router(effects.router, prefix="/api", tags=["effects"])
 app.include_router(legacy.router, prefix="/api/legacy", tags=["legacy"])
 
 

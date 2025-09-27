@@ -30,6 +30,31 @@ class RequestType(str, Enum):
     GET_SESSION_STATUS = "get_session_status"
     SET_SESSION_TEMPO = "set_session_tempo"
     GET_SESSION_STATS = "get_session_stats"
+    START_SESSION = "start_session"
+    STOP_SESSION = "stop_session"
+    RESET_SESSION = "reset_session"
+    SET_SESSION_CONFIG = "set_session_config"
+    RESET_SESSION_STATS = "reset_session_stats"
+    # Config service specific requests
+    GET_ALL_CONFIG = "get_all_config"
+    GET_CONFIG_SECTION = "get_config_section"
+    GET_CONFIG_VALUE = "get_config_value"
+    SET_CONFIG_VALUE = "set_config_value"
+    RELOAD_CONFIG = "reload_config"
+    # Effects service specific requests
+    EFFECT_ADD = "effect_add"
+    EFFECT_REMOVE = "effect_remove"
+    EFFECT_GET = "effect_get"
+    EFFECT_LIST = "effect_list"
+    EFFECT_CONNECT = "effect_connect"
+    EFFECT_DISCONNECT = "effect_disconnect"
+    EFFECT_PARAMETER_SET = "effect_parameter_set"
+    EFFECT_PARAMETER_ADDRESS = "effect_parameter_address"
+    EFFECT_PRESET_LOAD = "effect_preset_load"
+    EFFECT_PRESET_SAVE = "effect_preset_save"
+    EFFECT_PRESET_DELETE = "effect_preset_delete"
+    EFFECT_IMAGE = "effect_image"
+    EFFECT_FILE = "effect_file"
 
 
 class ResponseStatus(str, Enum):
@@ -65,6 +90,11 @@ class ServiceResponse(BaseModel):
     error_message: Optional[str] = None
     timestamp: datetime = Field(default_factory=datetime.now)
     processing_time_ms: Optional[float] = None
+
+    @property
+    def success(self) -> bool:
+        """Check if the response indicates success"""
+        return self.status == ResponseStatus.SUCCESS
 
     class Config:
         use_enum_values = True

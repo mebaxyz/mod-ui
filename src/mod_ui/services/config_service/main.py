@@ -1,66 +1,262 @@
 """
-Configuration Service
+Configuration Service v2 - Pure Redis Pub/Sub Service
 
-Dedicated microservice for serving MOD UI configuration settings.
-Serves the settings.py file from the mod directory as REST API endpoints.
+This service provides MOD UI configuration settings via Redis pub/sub communication.
+It serves the settings.json file from the mod directory to other services.
 """
 
 import asyncio
+import json
 import logging
 import os
 import signal
-from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any, Dict, Optional
 
-import uvicorn
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+# Import common service infrastructure
+from src.mod_ui.common import RequestType, ServiceServer
 
-from src.mod_ui.services.config_service.routers.config import router as config_router
+# Global service instances
+service_server: Optional[ServiceServer] = None
+settings_cache: Optional[Dict[str, Any]] = None
+
+# Path to the settings JSON file
+SETTINGS_JSON_PATH = (
+    Path(__file__).parent.parent.parent.parent.parent / "mod" / "settings.json"
+)
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan context manager"""
+def load_settings() -> Dict[str, Any]:
+    """Load settings from JSON file"""
+    global settings_cache
+
+    try:
+        if not SETTINGS_JSON_PATH.exists():
+            # Create default settings if file doesn't exist
+            default_settings = {
+                "audio": {"sample_rate": 48000, "buffer_size": 256, "driver": "jack"},
+                "device": {"name": "MOD Device", "model": "modduo", "version": "1.0.0"},
+                "ui": {"theme": "dark", "language": "en"},
+            }
+
+            # Ensure directory exists
+            SETTINGS_JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+            with open(SETTINGS_JSON_PATH, "w") as f:
+                json.dump(default_settings, f, indent=2)
+
+            settings_cache = default_settings
+            logging.info(f"Created default settings at {SETTINGS_JSON_PATH}")
+        else:
+            with open(SETTINGS_JSON_PATH, "r") as f:
+                settings_cache = json.load(f)
+            logging.info(f"Loaded settings from {SETTINGS_JSON_PATH}")
+
+        return settings_cache
+
+    except Exception as e:
+        logging.error(f"Failed to load settings: {e}")
+        # Return minimal default settings on error
+        return {
+            "audio": {"sample_rate": 48000, "buffer_size": 256, "driver": "jack"},
+            "device": {"name": "MOD Device", "model": "modduo", "version": "1.0.0"},
+        }
+
+
+def save_settings(settings: Dict[str, Any]) -> bool:
+    """Save settings to JSON file"""
+    global settings_cache
+
+    try:
+        # Ensure directory exists
+        SETTINGS_JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(SETTINGS_JSON_PATH, "w") as f:
+            json.dump(settings, f, indent=2)
+
+        settings_cache = settings
+        logging.info(f"Saved settings to {SETTINGS_JSON_PATH}")
+        return True
+
+    except Exception as e:
+        logging.error(f"Failed to save settings: {e}")
+        return False
+
+
+async def initialize_services():
+    """Initialize all services"""
+    global service_server
+
     logger = logging.getLogger(__name__)
-    logger.info("Starting Configuration Service...")
+    logger.info("Starting Config Service v2...")
 
-    yield
+    try:
+        # Load initial configuration
+        load_settings()
 
-    logger.info("Shutting down Configuration Service...")
+        # Initialize ServiceServer for Redis pub/sub communication
+        redis_host = os.getenv("REDIS_HOST", "localhost")
+        redis_port = os.getenv("REDIS_PORT", "6379")
+        redis_db = os.getenv("REDIS_DB", "0")
+        redis_url = f"redis://{redis_host}:{redis_port}/{redis_db}"
+
+        service_server = ServiceServer("config", redis_url)
+
+        # Register config handlers
+        service_server.register_handler(
+            RequestType.GET_ALL_CONFIG, handle_get_all_config
+        )
+        service_server.register_handler(
+            RequestType.GET_CONFIG_SECTION, handle_get_config_section
+        )
+        service_server.register_handler(
+            RequestType.GET_CONFIG_VALUE, handle_get_config_value
+        )
+        service_server.register_handler(
+            RequestType.SET_CONFIG_VALUE, handle_set_config_value
+        )
+        service_server.register_handler(RequestType.RELOAD_CONFIG, handle_reload_config)
+
+        await service_server.start()
+        logger.info("ServiceServer started for Redis pub/sub communication")
+
+        logger.info("Config Service v2 startup complete")
+
+    except Exception as e:
+        logger.error(f"Failed to start Config Service v2: {e}")
+        raise
 
 
-# Create FastAPI application
-app = FastAPI(
-    title="MOD UI Configuration Service",
-    description="Serves MOD UI configuration settings from settings.py",
-    version="1.0.0",
-    lifespan=lifespan,
-)
+async def shutdown_services():
+    """Shutdown all services gracefully"""
+    global service_server
 
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    logger = logging.getLogger(__name__)
+    logger.info("Shutting down Config Service v2...")
 
-# Include config router
-app.include_router(config_router)
+    if service_server:
+        await service_server.stop()
+        logger.info("ServiceServer stopped")
+
+    logger.info("Config Service v2 shutdown complete")
 
 
-# Health check endpoint
-@app.get("/health")
-async def health_check():
-    """Basic health check endpoint"""
-    return {"status": "healthy", "service": "config-service"}
+# ServiceServer request handlers for Redis pub/sub communication
+async def handle_get_all_config(request) -> dict:
+    """Handler for getting all configuration settings"""
+    try:
+        settings = load_settings()
+        return {"success": True, "config": settings}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
-# Development server entry point
+async def handle_get_config_section(request) -> dict:
+    """Handler for getting a specific configuration section"""
+    try:
+        data = request.data
+        section = data.get("section")
+
+        if not section:
+            return {"success": False, "error": "Section parameter required"}
+
+        settings = load_settings()
+
+        if section not in settings:
+            return {"success": False, "error": f"Section '{section}' not found"}
+
+        return {"success": True, "section": section, "config": settings[section]}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def handle_get_config_value(request) -> dict:
+    """Handler for getting a specific configuration value"""
+    try:
+        data = request.data
+        section = data.get("section")
+        key = data.get("key")
+
+        if not section or not key:
+            return {"success": False, "error": "Section and key parameters required"}
+
+        settings = load_settings()
+
+        if section not in settings:
+            return {"success": False, "error": f"Section '{section}' not found"}
+
+        section_data = settings[section]
+        if key not in section_data:
+            return {
+                "success": False,
+                "error": f"Key '{key}' not found in section '{section}'",
+            }
+
+        return {
+            "success": True,
+            "section": section,
+            "key": key,
+            "value": section_data[key],
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def handle_set_config_value(request) -> dict:
+    """Handler for setting a configuration value"""
+    try:
+        data = request.data
+        section = data.get("section")
+        key = data.get("key")
+        value = data.get("value")
+
+        if not section or not key:
+            return {"success": False, "error": "Section and key parameters required"}
+
+        settings = load_settings()
+
+        # Create section if it doesn't exist
+        if section not in settings:
+            settings[section] = {}
+
+        # Set the value
+        settings[section][key] = value
+
+        # Save settings
+        if save_settings(settings):
+            return {
+                "success": True,
+                "message": f"Set {section}.{key} = {value}",
+                "section": section,
+                "key": key,
+                "value": value,
+            }
+        else:
+            return {"success": False, "error": "Failed to save settings"}
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def handle_reload_config(request) -> dict:
+    """Handler for reloading configuration from file"""
+    global settings_cache
+    try:
+        # Clear cache to force reload
+        settings_cache = None
+        settings = load_settings()
+
+        return {
+            "success": True,
+            "message": "Configuration reloaded successfully",
+            "config": settings,
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 async def main():
-    """Main entry point for development server"""
-
+    """Main entry point for the service"""
     # Configure logging
     logging.basicConfig(
         level=logging.INFO,
@@ -77,23 +273,24 @@ async def main():
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
 
-    # Start server
-    config = uvicorn.Config(
-        app,
-        host="0.0.0.0",
-        port=int(os.getenv("CONFIG_SERVICE_PORT", "8083")),
-        log_level="info",
-        access_log=True,
-    )
-
-    server = uvicorn.Server(config)
-
     try:
-        logger.info("Starting Configuration Service on http://0.0.0.0:8083")
-        await server.serve()
+        # Initialize services
+        await initialize_services()
+
+        logger.info("Config Service v2 is running - Press Ctrl+C to shutdown")
+
+        # Keep the service running
+        while True:
+            await asyncio.sleep(1)
+
+    except KeyboardInterrupt:
+        logger.info("Received keyboard interrupt")
     except Exception as e:
-        logger.error(f"Failed to start server: {e}")
+        logger.error("Service error: %s", str(e))
         raise
+    finally:
+        # Shutdown services
+        await shutdown_services()
 
 
 if __name__ == "__main__":

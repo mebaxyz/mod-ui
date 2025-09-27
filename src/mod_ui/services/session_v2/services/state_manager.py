@@ -554,6 +554,45 @@ class StateManagerService:
 
         self.logger.debug(f"Buffer size changed to: {buffer_size} samples")
 
+    async def start_transport(self) -> None:
+        """Start transport (play)"""
+        from ..models import TransportState
+
+        await self.set_transport_state(TransportState.PLAYING)
+
+    async def stop_transport(self) -> None:
+        """Stop transport"""
+        from ..models import TransportState
+
+        await self.set_transport_state(TransportState.STOPPED)
+
+    async def pause_transport(self) -> None:
+        """Pause transport"""
+        from ..models import TransportState
+
+        await self.set_transport_state(TransportState.PAUSED)
+
+    async def reset_stats(self) -> None:
+        """Reset session statistics counters"""
+        self.session_state.cpu_load = 0.0
+        self.session_state.xrun_count = 0
+        self.session_state.uptime_seconds = 0
+        self.session_state.update_activity()
+
+        # Publish stats reset event
+        if self.event_publisher:
+            from ..models.events import EventType, SessionEvent
+
+            event = SessionEvent(
+                event_type=EventType.SESSION_STATS_UPDATED,
+                source_service="state_manager",
+                session_id=self.session_state.session_id,
+                data={"action": "reset", "cpu_load": 0.0, "xrun_count": 0},
+            )
+            await self.event_publisher.publish(event)
+
+        self.logger.debug("Session statistics reset")
+
     async def reset_session(
         self, new_session_state: Optional[SessionState] = None
     ) -> None:

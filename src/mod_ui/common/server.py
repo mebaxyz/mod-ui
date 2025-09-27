@@ -114,22 +114,17 @@ class ServiceServer:
     async def _listen_for_requests(self) -> None:
         """Main loop for listening to incoming requests"""
         try:
-            while self.running:
-                try:
-                    message = await asyncio.wait_for(
-                        self.pubsub.get_message(ignore_subscribe_messages=True),
-                        timeout=0.1,
-                    )
+            # Use async iteration instead of polling
+            async for message in self.pubsub.listen():
+                if not self.running:
+                    break
 
-                    if message and message["data"]:
+                if message["type"] == "message":
+                    try:
                         await self._handle_message(message["data"])
-
-                except asyncio.TimeoutError:
-                    # Timeout is expected to allow checking self.running
-                    continue
-                except Exception as e:
-                    logger.error(f"Error in request listener: {e}")
-                    await asyncio.sleep(1.0)  # Brief pause before retrying
+                    except Exception as e:
+                        logger.error(f"Error in request handler: {e}")
+                        await asyncio.sleep(0.1)  # Brief pause before continuing
 
         except asyncio.CancelledError:
             logger.info(f"Request listener for '{self.service_name}' cancelled")

@@ -81,6 +81,15 @@ async def initialize_services():
         service_server.register_handler(
             RequestType.GET_SESSION_STATS, handle_get_session_stats
         )
+        service_server.register_handler(RequestType.START_SESSION, handle_start_session)
+        service_server.register_handler(RequestType.STOP_SESSION, handle_stop_session)
+        service_server.register_handler(RequestType.RESET_SESSION, handle_reset_session)
+        service_server.register_handler(
+            RequestType.SET_SESSION_CONFIG, handle_set_session_config
+        )
+        service_server.register_handler(
+            RequestType.RESET_SESSION_STATS, handle_reset_session_stats
+        )
 
         await service_server.start()
         logger.info("ServiceServer started for Redis pub/sub communication")
@@ -268,6 +277,134 @@ async def handle_get_session_stats(request) -> dict:
                 "sample_rate": state.sample_rate,
                 "buffer_size": state.buffer_size,
                 "transport_state": state.transport_state,
+            },
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def handle_start_session(request) -> dict:
+    """Handler for starting a session"""
+    global state_manager
+
+    if not state_manager:
+        return {"error": "State manager not initialized"}
+
+    try:
+        data = request.data
+        pedalboard_path = data.get("pedalboard_path")
+
+        # Reset session first
+        await state_manager.reset_session()
+
+        # Load pedalboard if specified
+        if pedalboard_path:
+            # This would integrate with pedalboard service in the future
+            pass
+
+        # Get current state after start
+        state = await state_manager.get_session_state()
+
+        return {
+            "success": True,
+            "message": "Session started successfully",
+            "session_id": "current",
+            "session": {
+                "transport_state": state.transport_state,
+                "tempo_bpm": state.tempo_bpm,
+                "created_at": state.created_at.isoformat(),
+            },
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def handle_stop_session(request) -> dict:
+    """Handler for stopping a session"""
+    global state_manager
+
+    if not state_manager:
+        return {"error": "State manager not initialized"}
+
+    try:
+        # Stop transport and reset
+        await state_manager.stop_transport()
+        await state_manager.reset_session()
+
+        return {
+            "success": True,
+            "message": "Session stopped successfully",
+            "timestamp": state_manager._session_state.modified_at.isoformat(),
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def handle_reset_session(request) -> dict:
+    """Handler for resetting a session"""
+    global state_manager
+
+    if not state_manager:
+        return {"error": "State manager not initialized"}
+
+    try:
+        await state_manager.reset_session()
+
+        return {"success": True, "message": "Session reset successfully"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def handle_set_session_config(request) -> dict:
+    """Handler for setting session configuration"""
+    global state_manager
+
+    if not state_manager:
+        return {"error": "State manager not initialized"}
+
+    try:
+        data = request.data
+        config = {}
+
+        if "sample_rate" in data:
+            await state_manager.set_sample_rate(data["sample_rate"])
+            config["sample_rate"] = data["sample_rate"]
+
+        if "buffer_size" in data:
+            await state_manager.set_buffer_size(data["buffer_size"])
+            config["buffer_size"] = data["buffer_size"]
+
+        if "audio_driver" in data:
+            # This would be implemented when we have actual audio driver management
+            config["audio_driver"] = data["audio_driver"]
+
+        return {
+            "success": True,
+            "config": config,
+            "message": "Configuration updated successfully",
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def handle_reset_session_stats(request) -> dict:
+    """Handler for resetting session statistics"""
+    global state_manager
+
+    if not state_manager:
+        return {"error": "State manager not initialized"}
+
+    try:
+        await state_manager.reset_stats()
+        state = await state_manager.get_session_state()
+
+        return {
+            "success": True,
+            "message": "Statistics reset successfully",
+            "stats": {
+                "cpu_load": state.cpu_load,
+                "xrun_count": state.xrun_count,
+                "uptime_seconds": state.uptime_seconds,
             },
         }
     except Exception as e:

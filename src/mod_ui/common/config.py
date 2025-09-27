@@ -20,10 +20,31 @@ class Environment(str, Enum):
     PRODUCTION = "production"
 
 
+def get_redis_url_from_env() -> str:
+    """
+    Build Redis URL from environment variables or REDIS_URL directly.
+
+    Priority:
+    1. REDIS_URL (if set directly)
+    2. REDIS_HOST, REDIS_PORT, REDIS_DB components
+    3. Default localhost
+    """
+    # Check if REDIS_URL is set directly
+    if redis_url := os.getenv("REDIS_URL"):
+        return redis_url
+
+    # Build from components
+    host = os.getenv("REDIS_HOST", "localhost")
+    port = os.getenv("REDIS_PORT", "6379")
+    db = os.getenv("REDIS_DB", "0")
+
+    return f"redis://{host}:{port}/{db}"
+
+
 class ServiceClientConfig(BaseModel):
     """Enhanced ServiceClient configuration with validation"""
 
-    redis_url: str = Field(default="redis://localhost:6379")
+    redis_url: str = Field(default_factory=get_redis_url_from_env)
     default_timeout: float = Field(default=5.0, ge=0.1, le=300.0)
     max_retries: int = Field(default=1, ge=0, le=10)
     connection_pool_size: int = Field(default=10, ge=1, le=100)
@@ -79,9 +100,7 @@ class ServiceClientConfig(BaseModel):
         # Override with environment variables
         config_data.update(
             {
-                "redis_url": os.getenv(
-                    "REDIS_URL", config_data.get("redis_url", "redis://localhost:6379")
-                ),
+                "redis_url": get_redis_url_from_env(),
                 "default_timeout": float(
                     os.getenv(
                         "SERVICE_TIMEOUT", config_data.get("default_timeout", 5.0)
@@ -105,7 +124,7 @@ class ServiceServerConfig(BaseModel):
     """Enhanced ServiceServer configuration"""
 
     service_name: str
-    redis_url: str = Field(default="redis://localhost:6379")
+    redis_url: str = Field(default_factory=get_redis_url_from_env)
     max_concurrent_handlers: int = Field(default=100, ge=1, le=1000)
     handler_timeout: float = Field(default=30.0, ge=1.0, le=300.0)
     enable_metrics: bool = Field(default=True)

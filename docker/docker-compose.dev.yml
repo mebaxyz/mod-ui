@@ -181,26 +181,61 @@ services:
       retries: 3
       start_period: 10s
 
+  mod-effects-service:
+    build:
+      context: ..
+      dockerfile: docker/effects_service/Dockerfile
+    container_name: mod-ui-effects-service
+    restart: unless-stopped
+    # No HTTP port needed for Redis pub/sub service
+    volumes:
+      # Remove src volume mount to avoid Redis import issues
+      # - ../src:/app/src
+      - ../mod:/app/mod
+      - ../modtools:/app/modtools
+      - ../utils:/app/utils
+      - mod-data:/app/data
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - LOG_LEVEL=INFO
+      - PYTHONPATH=/app/src:/app
+      - LD_LIBRARY_PATH=/app/utils:/app/modtools
+    depends_on:
+      - redis
+    networks:
+      - mod-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import redis; redis.Redis(host='redis').ping()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
   mod-config-service:
     build:
       context: ..
       dockerfile: docker/config_service/Dockerfile
     container_name: mod-ui-config-service
     restart: unless-stopped
-    ports:
-      - "8083:8083"  # Configuration service port
+    # No HTTP port needed for Redis pub/sub service
     volumes:
-      - ../src:/app/src
+      # Remove src volume mount to avoid Redis import issues
+      # - ../src:/app/src
       - ../mod:/app/mod
     environment:
-      - CONFIG_SERVICE_HOST=0.0.0.0
-      - CONFIG_SERVICE_PORT=8083
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
       - LOG_LEVEL=INFO
       - PYTHONPATH=/app/src:/app
+    depends_on:
+      - redis
     networks:
       - mod-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
+      test: ["CMD", "python", "-c", "import redis; redis.Redis(host='redis').ping()"]
       interval: 30s
       timeout: 10s
       retries: 3
