@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 # Try to import the mod utils if available (for production)
 try:
-    from modtools.utils import (
+    from mod_ui.utils.modtools.utils import (
         add_bundle_to_lilv_world,
         close_jack,
         connect_jack_ports,

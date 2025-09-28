@@ -14,8 +14,12 @@ logger = logging.getLogger(__name__)
 
 # Import MOD utilities
 try:
-    from mod import check_environment, get_hardware_descriptor, safe_json_load
-    from mod.settings import (
+    from mod_ui.utils.mod_legacy import (
+        check_environment,
+        get_hardware_descriptor,
+        safe_json_load,
+    )
+    from mod_ui.utils.mod_legacy.settings import (
         API_KEY,
         CLOUD_HTTP_ADDRESS,
         CLOUD_LABS_HTTP_ADDRESS,
@@ -41,7 +45,23 @@ try:
         UNTITLED_PEDALBOARD_NAME,
         USER_ID_JSON_FILE,
     )
-    from modtools.utils import get_jack_buffer_size, get_jack_sample_rate
+
+    # Try to import modtools utilities
+    try:
+        from mod_ui.utils.modtools.utils import (
+            get_jack_buffer_size,
+            get_jack_sample_rate,
+        )
+
+        MODTOOLS_AVAILABLE = True
+    except ImportError:
+        MODTOOLS_AVAILABLE = False
+
+        def get_jack_buffer_size():
+            return 512
+
+        def get_jack_sample_rate():
+            return 44100
 
     MOD_UTILS_AVAILABLE = True
 except ImportError as e:
@@ -106,10 +126,84 @@ def mod_squeeze(content: str) -> str:
 def get_template_context_index() -> Dict[str, Any]:
     """Generate template context for index page matching original TemplateHandler.index()"""
     try:
-        if not MOD_UTILS_AVAILABLE:
-            return {}
+        # Build basic context even if MOD utilities are not available
+        import time
 
-        # Get hardware descriptor
+        # Get version string (matches original get_version logic)
+        version_arg = "1"
+        if MOD_UTILS_AVAILABLE and IMAGE_VERSION is not None and len(IMAGE_VERSION) > 1:
+            # strip initial 'v' from version if present
+            version_arg = (
+                IMAGE_VERSION[1:] if IMAGE_VERSION[0] == "v" else IMAGE_VERSION
+            )
+        else:
+            # Use timestamp as fallback
+            version_arg = str(int(time.time()))
+
+        # Basic context that always works
+        basic_context = {
+            "version": version_arg,
+            "cloud_url": (
+                CLOUD_HTTP_ADDRESS
+                if MOD_UTILS_AVAILABLE
+                else "https://cloud.moddevices.com"
+            ),
+            "cloud_labs_url": (
+                CLOUD_LABS_HTTP_ADDRESS
+                if MOD_UTILS_AVAILABLE
+                else "https://cloud.moddevices.com/labs"
+            ),
+            "plugins_url": (
+                PLUGINS_HTTP_ADDRESS
+                if MOD_UTILS_AVAILABLE
+                else "https://cloud.moddevices.com/plugins"
+            ),
+            "pedalboards_url": (
+                PEDALBOARDS_HTTP_ADDRESS
+                if MOD_UTILS_AVAILABLE
+                else "https://cloud.moddevices.com/pedalboards"
+            ),
+            "pedalboards_labs_url": (
+                PEDALBOARDS_LABS_HTTP_ADDRESS
+                if MOD_UTILS_AVAILABLE
+                else "https://cloud.moddevices.com/labs/pedalboards"
+            ),
+            "controlchain_url": (
+                CONTROLCHAIN_HTTP_ADDRESS
+                if MOD_UTILS_AVAILABLE
+                else "https://wiki.moddevices.com/wiki/Control_Chain"
+            ),
+            "using_desktop": "true" if (MOD_UTILS_AVAILABLE and DESKTOP) else "false",
+            "using_mod": "false",  # Default to false for now
+            "dev_api_class": "dev_api" if (MOD_UTILS_AVAILABLE and DEV_API) else "",
+            "default_icon_template": "",
+            "default_settings_template": "",
+            "default_pedalboard": "",
+            "hardware_profile": "e30=",  # base64 encoded empty dict
+            "bin_compat": "Unknown",
+            "codec_truebypass": "false",
+            "factory_pedalboards": False,
+            "platform": "Unknown",
+            "addressing_pages": 0,
+            "lv2_plugin_dir": "/app/lv2",
+            "bundlepath": "",
+            "title": "",
+            "size": "[]",
+            "fulltitle": "Untitled",
+            "titleblend": "blend",
+            "user_name": "",
+            "user_email": "",
+            "favorites": "[]",
+            "preferences": "{}",
+            "bufferSize": 256,
+            "sampleRate": 48000,
+        }
+
+        if not MOD_UTILS_AVAILABLE:
+            logger.warning("Using basic template context - MOD utilities not available")
+            return basic_context
+
+        # Enhanced context with MOD utilities
         hwdesc = get_hardware_descriptor()
 
         # Read default templates
@@ -172,66 +266,80 @@ def get_template_context_index() -> Dict[str, Any]:
         except:
             pass
 
-        # Get version string (matches original get_version logic)
-        version_arg = "1"
-        if IMAGE_VERSION is not None and len(IMAGE_VERSION) > 1:
-            # strip initial 'v' from version if present
-            version_arg = (
-                IMAGE_VERSION[1:] if IMAGE_VERSION[0] == "v" else IMAGE_VERSION
-            )
-        else:
-            import time
-
-            version_arg = str(int(time.time()))
-
-        # Build context matching original exactly
-        context = {
-            "default_icon_template": default_icon_template,
-            "default_settings_template": default_settings_template,
-            "default_pedalboard": (
-                mod_squeeze(DEFAULT_PEDALBOARD) if DEFAULT_PEDALBOARD else ""
-            ),
-            "cloud_url": CLOUD_HTTP_ADDRESS,
-            "cloud_labs_url": CLOUD_LABS_HTTP_ADDRESS,
-            "plugins_url": PLUGINS_HTTP_ADDRESS,
-            "pedalboards_url": PEDALBOARDS_HTTP_ADDRESS,
-            "pedalboards_labs_url": PEDALBOARDS_LABS_HTTP_ADDRESS,
-            "controlchain_url": CONTROLCHAIN_HTTP_ADDRESS,
-            "hardware_profile": hardware_profile,
-            "version": version_arg,
-            "bin_compat": hwdesc.get("bin-compat", "Unknown"),
-            "codec_truebypass": (
-                "true" if hwdesc.get("codec_truebypass", False) else "false"
-            ),
-            "factory_pedalboards": hwdesc.get("factory_pedalboards", False),
-            "platform": hwdesc.get("platform", "Unknown"),
-            "addressing_pages": int(hwdesc.get("addressing_pages", 0)),
-            "lv2_plugin_dir": mod_squeeze(LV2_PLUGIN_DIR),
-            "bundlepath": "",  # TODO: mod_squeeze(SESSION.host.pedalboard_path)
-            "title": mod_squeeze(user_name) if user_name else mod_squeeze(pbname),
-            "size": "[]",  # TODO: json.dumps(SESSION.host.pedalboard_size)
-            "fulltitle": html.escape(fullpbname),
-            "titleblend": (
-                "" if pbname else "blend"
-            ),  # TODO: '' if SESSION.host.pedalboard_name else 'blend'
-            "dev_api_class": "dev_api" if DEV_API else "",
-            "using_desktop": "true" if DESKTOP else "false",
-            "using_mod": (
-                "true"
-                if DEVICE_KEY and hwdesc.get("platform", None) is not None
-                else "false"
-            ),
-            "user_name": mod_squeeze(user_name),
-            "user_email": mod_squeeze(user_email),
-            "favorites": json.dumps(favorites),
-            "preferences": json.dumps(preferences),
-            "bufferSize": get_jack_buffer_size(),
-            "sampleRate": get_jack_sample_rate(),
-        }
+        # Update basic context with MOD data
+        context = basic_context.copy()
+        context.update(
+            {
+                "default_icon_template": default_icon_template,
+                "default_settings_template": default_settings_template,
+                "default_pedalboard": (
+                    mod_squeeze(DEFAULT_PEDALBOARD) if DEFAULT_PEDALBOARD else ""
+                ),
+                "hardware_profile": hardware_profile,
+                "bin_compat": hwdesc.get("bin-compat", "Unknown"),
+                "codec_truebypass": (
+                    "true" if hwdesc.get("codec_truebypass", False) else "false"
+                ),
+                "factory_pedalboards": hwdesc.get("factory_pedalboards", False),
+                "platform": hwdesc.get("platform", "Unknown"),
+                "addressing_pages": int(hwdesc.get("addressing_pages", 0)),
+                "lv2_plugin_dir": mod_squeeze(LV2_PLUGIN_DIR),
+                "bundlepath": "",  # TODO: mod_squeeze(SESSION.host.pedalboard_path)
+                "title": mod_squeeze(user_name) if user_name else mod_squeeze(pbname),
+                "size": "[]",  # TODO: json.dumps(SESSION.host.pedalboard_size)
+                "fulltitle": html.escape(fullpbname),
+                "titleblend": (
+                    "" if pbname else "blend"
+                ),  # TODO: '' if SESSION.host.pedalboard_name else 'blend'
+                "dev_api_class": "dev_api" if DEV_API else "",
+                "using_desktop": "true" if DESKTOP else "false",
+                "using_mod": (
+                    "true"
+                    if DEVICE_KEY and hwdesc.get("platform", None) is not None
+                    else "false"
+                ),
+                "user_name": mod_squeeze(user_name),
+                "user_email": mod_squeeze(user_email),
+                "favorites": json.dumps(favorites),
+                "preferences": json.dumps(preferences),
+                "bufferSize": get_jack_buffer_size(),
+                "sampleRate": get_jack_sample_rate(),
+            }
+        )
         return context
     except Exception as e:
         logger.error(f"Error generating index template context: {e}")
-        return {}
+        # Return basic context as fallback
+        import time
+
+        return {
+            "version": str(int(time.time())),
+            "cloud_url": "https://cloud.moddevices.com",
+            "using_desktop": "false",
+            "using_mod": "false",
+            "dev_api_class": "",
+            "default_icon_template": "",
+            "default_settings_template": "",
+            "default_pedalboard": "",
+            "hardware_profile": "e30=",
+            "bin_compat": "Unknown",
+            "codec_truebypass": "false",
+            "factory_pedalboards": False,
+            "platform": "Unknown",
+            "addressing_pages": 0,
+            "lv2_plugin_dir": "/app/lv2",
+            "bundlepath": "",
+            "title": "",
+            "size": "[]",
+            "fulltitle": "Untitled",
+            "titleblend": "blend",
+            "user_name": "",
+            "user_email": "",
+            "favorites": "[]",
+            "preferences": "{}",
+            "bufferSize": 256,
+            "sampleRate": 48000,
+        }
 
 
 def get_template_context_pedalboard(bundlepath: str = "") -> Dict[str, Any]:

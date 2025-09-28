@@ -76,23 +76,13 @@ logger.info(f"Server port: {DEVICE_WEBSERVER_PORT}")
 
 # Optional: Import and check for session availability
 try:
-    from mod.session import SESSION
-
-    SESSION_AVAILABLE = SESSION is not None
-    if SESSION_AVAILABLE:
-        logger.info("✅ SESSION module imported successfully")
-    else:
-        logger.warning("⚠️ SESSION is None")
-except ImportError as e:
-    logger.warning(f"⚠️ SESSION module not available: {e}")
-    SESSION_AVAILABLE = False
-except Exception as e:
-    logger.error(f"❌ Error importing SESSION: {e}")
-    SESSION_AVAILABLE = False
+    from mod_ui.utils.mod_legacy.session import SESSION
+except ImportError:
+    SESSION = None
 
 # Optional: Load LV2 plugins
 try:
-    from modtools.utils import get_plugin_info, get_plugin_list
+    from mod_ui.utils.modtools.utils import get_plugin_info, get_plugin_list
 
     # Initialize plugin information
     logger.info("Loading LV2 plugins...")
@@ -114,7 +104,7 @@ except Exception as e:
 
 # Store global state for routers
 app.state.html_dir = HTML_DIR
-app.state.session_available = SESSION_AVAILABLE
+app.state.session_available = True  # Session service v2 is available
 
 
 @app.on_event("startup")

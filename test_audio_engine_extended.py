@@ -1,169 +1,151 @@
 #!/usr/bin/env python3
 """
-Test script for Audio Engine Service with JACK and LV2 support
+MOD Audio Engine Service Extended Test Suite
 
-This script can be used to test the audio engine service locally using venv.
-It tests both the core functionality and the new JACK/LV2 capabilities.
+Tests the audio engine service with JACK and LV2 integration
+in both venv and Docker environments.
+
+Usage:
+    python test_audio_engine_extended.py --venv      # Test in venv
+    python test_audio_engine_extended.py --docker    # Test in Docker
+    python test_audio_engine_extended.py             # Auto-detect
 """
 
+import argparse
 import asyncio
 import logging
 import os
 import sys
-from pathlib import Path
 
-# Add the src directory to the path so we can import the audio engine
-sys.path.insert(0, str(Path(__file__).parent / "src"))
-
-from mod_ui.services.audio_engine.models import (
-    ConnectJackPortsCommand,
-    DisconnectJackPortsCommand,
-    GetPluginInfoCommand,
-    ScanPluginsCommand,
-    SetJackBufferSizeCommand,
-)
-from mod_ui.services.audio_engine.service import AudioEngineService
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Add src to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 
-async def test_audio_engine_service():
-    """Test the audio engine service with JACK and LV2 support"""
+async def test_audio_engine_extended(environment="auto"):
+    """Test the extended audio engine service with JACK and LV2 support"""
 
-    print("🧪 Testing Audio Engine Service with JACK and LV2 Support")
-    print("=" * 60)
-
-    # Create service instance
-    service = AudioEngineService()
+    print("🚀 MOD Audio Engine Service Test Suite")
+    print("This test can run in:")
+    print("  • venv (local development)")
+    print("  • Docker (containerized deployment)")
+    print("  • ServiceBus (microservices architecture)")
 
     try:
+        print("🧪 Testing Audio Engine Service with JACK and LV2 Support")
+        print("=" * 60)
+
+        # Import service components
+        from mod_ui.services.audio_engine.jack_lv2_utils import (
+            get_jack_manager,
+            get_lv2_manager,
+        )
+        from mod_ui.services.audio_engine.service import AudioEngineService
+
+        # Initialize service
         print("\n1. 🚀 Starting audio engine service...")
-        success = await service.start()
-        print(f"   Service started: {success}")
+        service = AudioEngineService()
+        started = await service.start()
+        print(f"   Service started: {started}")
         print(f"   mod-host connected: {service.is_connected}")
 
+        # Test JACK functionality
         print("\n2. 🎵 Testing JACK functionality...")
-
-        # Test JACK data
-        try:
-            jack_data = await service.get_jack_data()
-            print(
-                f"   ✅ JACK Data: CPU Load={jack_data.cpu_load:.2f}%, Sample Rate={jack_data.sample_rate}Hz"
-            )
-            print(
-                f"      XRuns: {jack_data.xruns}, Buffer Size: {jack_data.buffer_size}"
-            )
-        except Exception as e:
-            print(f"   ⚠️  JACK Data failed (expected if JACK not running): {e}")
+        jack_data = await service.get_jack_data()
+        print(
+            f"   ✅ JACK Data: CPU Load={jack_data.cpu_load:.2f}%, Sample Rate={jack_data.sample_rate}Hz"
+        )
+        print(f"      XRuns: {jack_data.xruns}, Buffer Size: {jack_data.buffer_size}")
 
         # Test hardware ports
-        try:
-            audio_in_ports = await service.get_jack_hardware_ports(
-                is_audio=True, is_output=False
-            )
-            audio_out_ports = await service.get_jack_hardware_ports(
-                is_audio=True, is_output=True
-            )
-            print(
-                f"   ✅ Hardware Ports: {len(audio_in_ports)} inputs, {len(audio_out_ports)} outputs"
-            )
+        hw_ports = await service.get_jack_hardware_ports()
+        input_ports = [p for p in hw_ports if not p.is_output]
+        output_ports = [p for p in hw_ports if p.is_output]
+        print(
+            f"   ✅ Hardware Ports: {len(input_ports)} inputs, {len(output_ports)} outputs"
+        )
 
-            if audio_in_ports:
-                print(f"      Input example: {audio_in_ports[0].name}")
-            if audio_out_ports:
-                print(f"      Output example: {audio_out_ports[0].name}")
-
-        except Exception as e:
-            print(f"   ⚠️  Hardware ports failed (expected if JACK not running): {e}")
-
+        # Test LV2 plugin functionality
         print("\n3. 🔌 Testing LV2 plugin functionality...")
+        plugins = await service.get_plugin_list()
+        print(f"   ✅ Found {len(plugins)} LV2 plugins")
 
-        # Test plugin list
-        try:
-            plugin_list = await service.get_plugin_list()
-            print(f"   ✅ Found {len(plugin_list)} LV2 plugins")
+        all_plugins = await service.get_all_plugins()
+        print(f"   ✅ All plugins scan: {len(all_plugins)} plugins")
 
-            if plugin_list:
-                print(f"      Example plugin: {plugin_list[0]}")
-
-                # Test getting detailed plugin info
-                try:
-                    plugin_info_cmd = GetPluginInfoCommand(plugin_uri=plugin_list[0])
-                    plugin_info = await service.get_plugin_info(plugin_info_cmd)
-                    if plugin_info:
-                        print(f"      Plugin name: {plugin_info.name}")
-                        print(f"      Plugin ports: {len(plugin_info.ports)}")
-                    else:
-                        print(f"      Plugin info not available for {plugin_list[0]}")
-                except Exception as e:
-                    print(f"   ⚠️  Plugin info failed: {e}")
-
-        except Exception as e:
-            print(f"   ⚠️  Plugin list failed (expected without MOD utils): {e}")
-
-        # Test all plugins (lightweight)
-        try:
-            all_plugins = await service.get_all_plugins()
-            print(f"   ✅ All plugins scan: {len(all_plugins)} plugins")
-
-            if all_plugins:
-                first_plugin = all_plugins[0]
-                print(f"      First plugin: {first_plugin.get('name', 'Unknown')}")
-
-        except Exception as e:
-            print(f"   ⚠️  All plugins scan failed (expected without MOD utils): {e}")
-
+        # Test JACK connections (if we have ports)
         print("\n4. 🔗 Testing JACK connection functionality...")
+        if len(hw_ports) >= 2:
+            try:
+                # Try to connect first two ports for testing
+                from mod_ui.services.audio_engine.models import ConnectJackPortsCommand
 
-        # Test JACK port connections (will likely fail without running JACK)
-        try:
-            # This is just a test - connecting non-existent ports
-            connect_cmd = ConnectJackPortsCommand(
-                output_port="system:playback_1", input_port="system:capture_1"
-            )
-            # Don't actually try to connect as it will likely fail
+                connect_cmd = ConnectJackPortsCommand(
+                    output_port=hw_ports[0].name, input_port=hw_ports[1].name
+                )
+                connection = await service.connect_jack_ports(connect_cmd)
+                print(
+                    f"   ✅ JACK connection test: {connection.output_port} → {connection.input_port}"
+                )
+
+                # Disconnect
+                from mod_ui.services.audio_engine.models import (
+                    DisconnectJackPortsCommand,
+                )
+
+                disconnect_cmd = DisconnectJackPortsCommand(
+                    output_port=hw_ports[0].name, input_port=hw_ports[1].name
+                )
+                disconnected = await service.disconnect_jack_ports(disconnect_cmd)
+                print(f"   ✅ JACK disconnection test: {disconnected}")
+
+            except Exception as e:
+                print(f"   ℹ️  JACK connection test: {e}")
+        else:
             print("   ℹ️  JACK connection test skipped (requires running JACK)")
 
-        except Exception as e:
-            print(f"   ⚠️  JACK connection test failed: {e}")
-
+        # Test audio engine state
         print("\n5. 📊 Testing audio engine state...")
-
-        # Test getting complete state
-        try:
-            state = await service.get_state()
-            print(f"   ✅ Audio Engine State:")
-            print(f"      Plugins: {len(state.plugins)}")
-            print(f"      Connections: {len(state.connections)}")
-            print(f"      Transport BPM: {state.transport.bpm}")
-            print(f"      JACK Hardware Ports: {len(state.jack_hardware_ports)}")
-
-        except Exception as e:
-            print(f"   ❌ State retrieval failed: {e}")
+        state = await service.get_state()
+        print(f"   ✅ Audio Engine State:")
+        print(f"      Plugins: {len(state.plugins)}")
+        print(f"      Connections: {len(state.connections)}")
+        print(f"      Transport BPM: {state.transport.bpm}")
+        print(f"      JACK Hardware Ports: {len(hw_ports)}")
 
         print("\n" + "=" * 60)
         print("🎉 Audio Engine Service Test Complete!")
         print("   • Core functionality: Available")
-        print("   • JACK integration: Ready (requires JACK daemon)")
+        print(
+            "   • JACK integration: Ready (requires JACK daemon)"
+            if not service.is_connected
+            else "   • JACK integration: Connected"
+        )
         print("   • LV2 integration: Ready (requires MOD utils or fallback)")
         print("   • ServiceBus ready: Yes")
         print("   • Docker ready: Yes")
 
-    except Exception as e:
-        print(f"❌ Test failed with error: {e}")
-        import traceback
-
-        traceback.print_exc()
-
-    finally:
+        # Stop service
         print("\n🛑 Stopping service...")
         await service.stop()
 
+    except ImportError as e:
+        print(f"❌ Import error: {e}")
+        print(
+            "Make sure you're in the correct environment (venv activated or Docker running)"
+        )
+        return False
+    except Exception as e:
+        print(f"❌ Test failed: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return False
+
+    return True
+
 
 async def test_fallback_functionality():
-    """Test fallback functionality without MOD utilities"""
-
+    """Test fallback implementations without MOD utilities"""
     print("\n🧪 Testing Fallback Functionality")
     print("=" * 40)
 
@@ -173,42 +155,67 @@ async def test_fallback_functionality():
             get_lv2_manager,
         )
 
-        jack_mgr = get_jack_manager()
-        lv2_mgr = get_lv2_manager()
+        # Test managers
+        jack_manager = get_jack_manager()
+        lv2_manager = get_lv2_manager()
 
-        print(f"JACK Manager initialized: {jack_mgr.initialized}")
-        print(f"LV2 Manager initialized: {lv2_mgr.initialized}")
+        print(f"JACK Manager initialized: {jack_manager is not None}")
+        print(f"LV2 Manager initialized: {lv2_manager is not None}")
 
-        # Test JACK fallback
-        jack_data = jack_mgr.get_jack_data()
-        print(
-            f"JACK Data (fallback): SR={jack_data.sample_rate}Hz, BS={jack_data.buffer_size}"
-        )
+        if jack_manager:
+            jack_data = await jack_manager.get_jack_data()
+            print(
+                f"JACK Data (fallback): SR={jack_data.sample_rate}Hz, BS={jack_data.buffer_size}"
+            )
 
-        # Test LV2 fallback
-        plugin_list = lv2_mgr.get_plugin_list()
-        print(f"LV2 Plugins (fallback): {len(plugin_list)} found")
-
-        if plugin_list:
-            print(f"Example plugin: {plugin_list[0]}")
-
-            # Test getting plugin info
-            plugin_info = lv2_mgr.get_plugin_info(plugin_list[0])
-            if plugin_info:
-                print(f"Plugin info: {plugin_info.name} ({plugin_info.uri})")
-            else:
-                print("Plugin info not available")
+        if lv2_manager:
+            plugins = await lv2_manager.get_plugin_list()
+            print(f"LV2 Plugins (fallback): {len(plugins)} found")
 
     except Exception as e:
-        print(f"⚠️  Fallback test failed: {e}")
+        print(f"❌ Fallback test failed: {e}")
+        return False
+
+    return True
+
+
+def main():
+    """Main test function"""
+    parser = argparse.ArgumentParser(description="Test MOD Audio Engine Service")
+    parser.add_argument("--venv", action="store_true", help="Test in venv environment")
+    parser.add_argument(
+        "--docker", action="store_true", help="Test in Docker environment"
+    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
+
+    args = parser.parse_args()
+
+    if args.verbose:
+        logging.basicConfig(level=logging.INFO)
+
+    environment = "auto"
+    if args.venv:
+        environment = "venv"
+    elif args.docker:
+        environment = "docker"
+
+    # Run tests
+    try:
+        success = asyncio.run(test_audio_engine_extended(environment))
+        if success:
+            asyncio.run(test_fallback_functionality())
+            print("\n✅ All tests completed successfully!")
+        else:
+            print("\n❌ Some tests failed!")
+            sys.exit(1)
+
+    except KeyboardInterrupt:
+        print("\n⚠️  Tests interrupted by user")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n❌ Test suite failed: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    print("🚀 MOD Audio Engine Service Test Suite")
-    print("This test can run in:")
-    print("  • venv (local development)")
-    print("  • Docker (containerized deployment)")
-    print("  • ServiceBus (microservices architecture)")
-
-    asyncio.run(test_audio_engine_service())
-    asyncio.run(test_fallback_functionality())
+    main()

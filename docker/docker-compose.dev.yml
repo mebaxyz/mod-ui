@@ -11,11 +11,12 @@ services:
       - "8888:8888"
     volumes:
       - ../src:/app/src
-      - ../mod:/app/mod
-      - ../modtools:/app/modtools
+      - ../src/mod_ui_original:/app/mod  # Original code archive
+      - ../src/mod_ui/utils/modtools:/app/modtools  # Copied utilities
       - ../utils:/app/utils
-      - ../html:/app/html
+      - ../src/mod_ui_original/html:/app/html  # Original web assets
       - ../default.pedalboard:/app/default.pedalboard
+      - ../config:/app/config  # Configuration files
       - mod-data:/app/data
       - /tmp/.X11-unix:/tmp/.X11-unix:ro
     environment:
@@ -49,7 +50,7 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ../html:/usr/share/nginx/html:ro
+      - ../src/mod_ui_original/html:/usr/share/nginx/html:ro  # Original web assets
     depends_on:
       - mod-api
     networks:
@@ -63,8 +64,9 @@ services:
     restart: unless-stopped
     volumes:
       - ../src:/app/src
-      - ../mod:/app/mod
-      - ../modtools:/app/modtools
+      - ../src/mod_ui_original:/app/mod  # Original code archive
+      - ../src/mod_ui/utils/modtools:/app/modtools  # Copied utilities
+      - ../config:/app/config  # Configuration files
       - mod-data:/app/data
     environment:
       - MOD_DEV_ENVIRONMENT=1
@@ -96,7 +98,8 @@ services:
       - "8003:8003"  # Hardware service standalone port
     volumes:
       - ../src:/app/src
-      - ../mod:/app/mod
+      - ../src/mod_ui_original:/app/mod  # Original code archive
+      - ../config:/app/config  # Configuration files
       - /dev:/dev
       - mod-data:/data
     privileged: true  # Required for hardware access
@@ -192,9 +195,10 @@ services:
     volumes:
       # Remove src volume mount to avoid Redis import issues
       # - ../src:/app/src
-      - ../mod:/app/mod
-      - ../modtools:/app/modtools
+      - ../src/mod_ui_original:/app/mod  # Original code archive
+      - ../src/mod_ui/utils/modtools:/app/modtools  # Copied utilities
       - ../utils:/app/utils
+      - ../config:/app/config  # Configuration files
       - mod-data:/app/data
     environment:
       - REDIS_HOST=redis
@@ -224,7 +228,7 @@ services:
     volumes:
       # Remove src volume mount to avoid Redis import issues
       # - ../src:/app/src
-      - ../mod:/app/mod
+      - ../config:/app/config  # Configuration files
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379

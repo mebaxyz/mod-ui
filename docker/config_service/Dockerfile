@@ -20,9 +20,9 @@ RUN pip install --no-cache-dir \
     redis==5.0.1 \
     pydantic==2.5.0
 
-# Copy application code
+# Copy application code and configuration
 COPY src/ /app/src/
-COPY mod/ /app/mod/
+COPY config/ /app/config/
 
 # Copy and install ServiceBus package  
 COPY libraries/ /app/libraries/

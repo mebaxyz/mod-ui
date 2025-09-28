@@ -34,12 +34,12 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt python-multipart
 
 # Copy source code
-COPY src/ src/
-COPY mod/ mod/
-COPY modtools/ modtools/
-COPY utils/ utils/
-COPY html/ html/
-COPY default.pedalboard/ default.pedalboard/
+# Copy application code and configuration
+COPY src/ /app/src/
+COPY src/mod_ui_original /app/mod
+COPY config /app/config
+COPY utils/ /app/utils/
+COPY src/mod_ui_original/modtools /app/modtools/
 
 # Build C++ utilities
 RUN cd utils && make

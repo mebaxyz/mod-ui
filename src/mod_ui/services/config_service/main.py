@@ -1,8 +1,8 @@
 """
-Configuration Service v2 - Pure Redis Pub/Sub Service
+Configuration Service for MOD UI
 
-This service provides MOD UI configuration settings via Redis pub/sub communication.
-It serves the settings.json file from the mod directory to other services.
+Serves configuration settings from the centralized config directory.
+It serves the settings.json file from the config directory to other services.
 """
 
 import asyncio
@@ -23,7 +23,7 @@ settings_cache: Optional[Dict[str, Any]] = None
 
 # Path to the settings JSON file
 SETTINGS_JSON_PATH = (
-    Path(__file__).parent.parent.parent.parent.parent / "mod" / "settings.json"
+    Path(__file__).parent.parent.parent.parent.parent / "config" / "settings.json"
 )
 
 
@@ -100,28 +100,20 @@ async def initialize_services():
         redis_port = os.getenv("REDIS_PORT", "6379")
         redis_db = os.getenv("REDIS_DB", "0")
         redis_url = f"redis://{redis_host}:{redis_port}/{redis_db}"
-        
+
         # Configure ServiceBus with Docker environment
         config = CommConfig(redis_url=redis_url)
         set_config(config)
-        
+
         logger.info("Using Redis URL: %s", redis_url)
 
         service = Service("config")
 
         # Register config handlers
-        service.register_handler(
-            "GET_ALL_CONFIG", handle_get_all_config
-        )
-        service.register_handler(
-            "GET_CONFIG_SECTION", handle_get_config_section
-        )
-        service.register_handler(
-            "GET_CONFIG_VALUE", handle_get_config_value
-        )
-        service.register_handler(
-            "SET_CONFIG_VALUE", handle_set_config_value
-        )
+        service.register_handler("GET_ALL_CONFIG", handle_get_all_config)
+        service.register_handler("GET_CONFIG_SECTION", handle_get_config_section)
+        service.register_handler("GET_CONFIG_VALUE", handle_get_config_value)
+        service.register_handler("SET_CONFIG_VALUE", handle_set_config_value)
         service.register_handler("RELOAD_CONFIG", handle_reload_config)
 
         await service.start()

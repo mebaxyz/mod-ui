@@ -29,8 +29,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
 COPY src/ src/
-COPY mod/ mod/
-COPY modtools/ modtools/
+COPY src/mod_ui_original mod/
+COPY src/mod_ui_original/modtools modtools/
+COPY config config/
 COPY utils/ utils/
 
 # Build C++ utilities

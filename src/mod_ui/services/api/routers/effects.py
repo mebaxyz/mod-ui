@@ -16,7 +16,7 @@ router = APIRouter(prefix="/effect", tags=["effects"])
 
 # Import MOD utilities with fallbacks
 try:
-    from modtools.utils import get_all_plugins, get_plugin_info
+    from mod_ui.utils.modtools.utils import get_all_plugins, get_plugin_info
 
     MOD_UTILS_AVAILABLE = True
 except ImportError as e:

@@ -27,10 +27,10 @@ RUN pip install --no-cache-dir \
     redis>=5.0.0 \
     aiofiles>=23.0.0
 
-# Copy application code
+# Copy application code and configuration
 COPY src/ /app/src/
-COPY mod/ /app/mod/
-COPY modtools/ /app/modtools/
+COPY src/mod_ui_original /app/mod
+COPY config /app/config
 
 # Copy and install ServiceBus package
 COPY libraries/ /app/libraries/

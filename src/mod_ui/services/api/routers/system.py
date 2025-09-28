@@ -22,7 +22,8 @@ router = APIRouter(tags=["system"])
 # Import settings with fallbacks
 try:
     from mod import safe_json_load
-    from mod.settings import IMAGE_VERSION, PREFERENCES_JSON_FILE
+
+    from mod_ui.utils.mod_legacy.settings import IMAGE_VERSION, PREFERENCES_JSON_FILE
 
     MOD_SETTINGS_AVAILABLE = True
 except ImportError as e:
@@ -124,7 +125,7 @@ async def websocket_health():
         active_connections = 0
 
     try:
-        from mod.session import SESSION
+        from mod_ui.utils.mod_legacy.session import SESSION
 
         session_available = SESSION is not None
     except ImportError:

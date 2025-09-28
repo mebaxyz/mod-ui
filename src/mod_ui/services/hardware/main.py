@@ -28,8 +28,8 @@ import uvicorn
 from fastapi import FastAPI
 
 try:
-    from mod.control_chain import ControlChainDeviceListener
-    from mod.hmi import HMI
+    from mod_ui.utils.mod_legacy.control_chain import ControlChainDeviceListener
+    from mod_ui.utils.mod_legacy.hmi import HMI
 except ImportError:
     # Mock for development/testing
     class HMI:

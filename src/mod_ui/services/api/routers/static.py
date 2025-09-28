@@ -31,7 +31,7 @@ async def bulk_template_loader():
     loading all .html files from the include directory and converting them
     to a JavaScript object for client-side templating.
     """
-    content = []
+    content = ["// MOD UI JavaScript Templates\nvar TEMPLATES = {};\n\n"]
     include_dir = os.path.join(HTML_DIR, "include")
 
     if os.path.exists(include_dir):
@@ -51,8 +51,12 @@ async def bulk_template_loader():
 
             except Exception as e:
                 logger.error(f"Error loading template {template_file}: {e}")
+    else:
+        logger.warning(f"Templates include directory not found: {include_dir}")
+        # Provide basic empty templates to prevent undefined errors
+        content.append("// Templates directory not found - using empty templates\n")
 
-    javascript_content = "\n".join(content)
+    javascript_content = "".join(content)
 
     return Response(
         content=javascript_content,

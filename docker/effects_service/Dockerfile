@@ -20,9 +20,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
-COPY src/ src/
-COPY mod/ mod/
-COPY modtools/ modtools/
+# Copy application code and configuration
+COPY src/ /app/src/
+COPY src/mod_ui_original /app/mod
+COPY config /app/config
+COPY src/mod_ui_original/modtools/ modtools/
 COPY utils/ utils/
 
 # Copy and install ServiceBus package

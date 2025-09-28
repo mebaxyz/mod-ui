@@ -36,8 +36,9 @@ COPY requirements-hardware.txt .
 RUN pip install --no-cache-dir -r requirements-hardware.txt
 
 # Copy source code
-COPY src/ ./
-COPY mod/ ./mod/
+COPY src/ ./src/
+COPY src/mod_ui_original ./mod
+COPY config ./config
 COPY utils/ ./utils/
 
 # Build C++ utilities for JACK integration

@@ -6,7 +6,7 @@ FROM nginx:alpine
 COPY docker/web/nginx.conf /etc/nginx/nginx.conf
 
 # Copy static HTML files
-COPY html/ /usr/share/nginx/html/
+COPY src/mod_ui_original/html/ /usr/share/nginx/html/
 
 # Create logs directory
 RUN mkdir -p /var/log/nginx
