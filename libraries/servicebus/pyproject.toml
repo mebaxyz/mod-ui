@@ -49,7 +49,7 @@ Documentation = "https://github.com/moddevices/mod-ui/tree/main/microservice_com
 Issues = "https://github.com/moddevices/mod-ui/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["microservice_comm"]
+packages = ["servicebus"]
 
 [tool.black]
 line-length = 88

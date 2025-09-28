@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException
 
-from mod_ui.common import RequestType, ServiceClient
+from servicebus import ServiceClient
 
 router = APIRouter()
 
@@ -44,21 +44,21 @@ async def get_all_settings() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Config service not available")
 
     try:
-        response = await config_service_client.make_request(
-            service_name="config",
-            request_type=RequestType.GET_ALL_CONFIG,
+        response = await config_service_client.call(
+            target_service="config",
+            request_type="get_all_config",
             data={},
         )
 
-        if response.data.get("success"):
+        if response is not None:
             return {
                 "ok": True,
-                **response.data.get("config", {}),
+                **response,
             }
         else:
             raise HTTPException(
                 status_code=500,
-                detail=response.data.get("error", "Failed to get config"),
+                detail="Failed to get config",
             )
 
     except Exception as e:
@@ -72,24 +72,20 @@ async def get_settings_section(section: str) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Config service not available")
 
     try:
-        response = await config_service_client.make_request(
-            service_name="config",
-            request_type=RequestType.GET_CONFIG_SECTION,
+        response = await config_service_client.call(
+            target_service="config",
+            request_type="get_config_section",
             data={"section": section},
         )
 
-        if response.data.get("success"):
+        if response is not None:
             return {
                 "ok": True,
-                "section": response.data.get("section"),
-                **response.data.get("config", {}),
+                "section": section,
+                **response,
             }
         else:
-            error_msg = response.data.get("error", "Failed to get config section")
-            if "not found" in error_msg:
-                raise HTTPException(status_code=404, detail=error_msg)
-            else:
-                raise HTTPException(status_code=500, detail=error_msg)
+            raise HTTPException(status_code=500, detail="Failed to get config section")
 
     except HTTPException:
         raise
@@ -104,25 +100,21 @@ async def get_setting_by_key(section: str, key: str) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Config service not available")
 
     try:
-        response = await config_service_client.make_request(
-            service_name="config",
-            request_type=RequestType.GET_CONFIG_VALUE,
+        response = await config_service_client.call(
+            target_service="config",
+            request_type="get_config_value",
             data={"section": section, "key": key},
         )
 
-        if response.data.get("success"):
+        if response is not None:
             return {
                 "ok": True,
-                "section": response.data.get("section"),
-                "key": response.data.get("key"),
-                "value": response.data.get("value"),
+                "section": section,
+                "key": key,
+                "value": response,
             }
         else:
-            error_msg = response.data.get("error", "Failed to get config value")
-            if "not found" in error_msg:
-                raise HTTPException(status_code=404, detail=error_msg)
-            else:
-                raise HTTPException(status_code=500, detail=error_msg)
+            raise HTTPException(status_code=500, detail="Failed to get config value")
 
     except HTTPException:
         raise
@@ -137,24 +129,24 @@ async def set_setting_by_key(section: str, key: str, value: Any) -> Dict[str, An
         raise HTTPException(status_code=500, detail="Config service not available")
 
     try:
-        response = await config_service_client.make_request(
-            service_name="config",
-            request_type=RequestType.SET_CONFIG_VALUE,
+        response = await config_service_client.call(
+            target_service="config",
+            request_type="set_config_value",
             data={"section": section, "key": key, "value": value},
         )
 
-        if response.data.get("success"):
+        if response is not None:
             return {
                 "ok": True,
-                "message": response.data.get("message", "Configuration updated"),
-                "section": response.data.get("section"),
-                "key": response.data.get("key"),
-                "value": response.data.get("value"),
+                "message": "Configuration updated",
+                "section": section,
+                "key": key,
+                "value": value,
             }
         else:
             raise HTTPException(
                 status_code=500,
-                detail=response.data.get("error", "Failed to set config value"),
+                detail="Failed to set config value",
             )
 
     except Exception as e:
@@ -168,22 +160,22 @@ async def reload_config() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Config service not available")
 
     try:
-        response = await config_service_client.make_request(
-            service_name="config",
-            request_type=RequestType.RELOAD_CONFIG,
+        response = await config_service_client.call(
+            target_service="config",
+            request_type="reload_config",
             data={},
         )
 
-        if response.data.get("success"):
+        if response is not None:
             return {
                 "ok": True,
-                "message": response.data.get("message", "Configuration reloaded"),
-                "config": response.data.get("config", {}),
+                "message": "Configuration reloaded",
+                "config": response,
             }
         else:
             raise HTTPException(
                 status_code=500,
-                detail=response.data.get("error", "Failed to reload config"),
+                detail="Failed to reload config",
             )
 
     except Exception as e:
@@ -202,13 +194,13 @@ async def config_health_check() -> Dict[str, Any]:
 
     try:
         # Try to get all settings to verify service is working
-        response = await config_service_client.make_request(
-            service_name="config",
-            request_type=RequestType.GET_ALL_CONFIG,
+        response = await config_service_client.call(
+            target_service="config",
+            request_type="get_all_config",
             data={},
         )
 
-        if response.data.get("success"):
+        if response is not None:
             return {
                 "status": "healthy",
                 "service": "config-service",
@@ -219,7 +211,7 @@ async def config_health_check() -> Dict[str, Any]:
                 "status": "unhealthy",
                 "service": "config-service",
                 "settings_loaded": False,
-                "error": response.data.get("error", "Unknown error"),
+                "error": "Unknown error",
             }
 
     except Exception as e:

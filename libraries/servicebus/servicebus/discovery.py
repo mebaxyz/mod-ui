@@ -23,8 +23,7 @@ class ServiceDiscovery:
         self._cache_expiry: Dict[str, float] = {}
         self._is_monitoring = False
         
-    @property
-    async def redis(self) -> redis.Redis:
+    async def get_redis(self) -> redis.Redis:
         """Get Redis connection with connection pooling"""
         if self._redis is None:
             if self.config.enable_connection_pooling and self._connection_pool is None:
@@ -52,7 +51,7 @@ class ServiceDiscovery:
         if not refresh and self._is_cache_valid():
             return self._cached_services.copy()
         
-        redis_client = await self.redis
+        redis_client = await self.get_redis()
         
         # Get all service registry keys
         pattern = "service_registry:*"
@@ -174,7 +173,7 @@ class ServiceDiscovery:
 
     async def _cleanup_expired_services(self) -> None:
         """Remove expired service registrations"""
-        redis_client = await self.redis
+        redis_client = await self.get_redis()
         pattern = "service_registry:*"
         keys = await redis_client.keys(pattern)
         

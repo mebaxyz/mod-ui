@@ -32,6 +32,10 @@ COPY src/ /app/src/
 COPY mod/ /app/mod/
 COPY modtools/ /app/modtools/
 
+# Copy and install ServiceBus package
+COPY libraries/ /app/libraries/
+RUN pip install -e /app/libraries/servicebus/
+
 # Set Python path
 ENV PYTHONPATH=/app/src:/app
 

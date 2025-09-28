@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException
 
-from mod_ui.common import RequestType, ServiceClient
+from servicebus import ServiceClient
 
 logger = logging.getLogger(__name__)
 
@@ -55,22 +55,18 @@ async def get_system_info() -> Dict[str, Any]:
 
     try:
         # Make request to system stats service
-        response = await _service_client.make_request(
-            request_type=RequestType.GET_SYSTEM_INFO,
+        response = await _service_client.call(
+            target_service="system-stats-service",
+            request_type="get_system_info",
             data={},
-            service_name="system-stats-service",
             timeout=5.0,
         )
 
-        if response.status == "success":
-            return response.data
+        if response is not None:
+            return response
         else:
-            logger.error(
-                f"Failed to get system info from service: {response.error_message}"
-            )
-            raise HTTPException(
-                status_code=500, detail=f"Service error: {response.error_message}"
-            )
+            logger.error("Failed to get system info from service")
+            raise HTTPException(status_code=500, detail="Service error")
 
     except Exception as e:
         logger.error(f"Failed to get system info: {e}")
@@ -97,22 +93,18 @@ async def get_system_stats() -> Dict[str, Any]:
 
     try:
         # Make request to system stats service
-        response = await _service_client.make_request(
+        response = await _service_client.call(
+            target_service="system-stats-service",
             request_type="get_system_stats",
             data={},
-            service_name="system-stats-service",
             timeout=5.0,
         )
 
-        if response.status == "success":
-            return response.data
+        if response is not None:
+            return response
         else:
-            logger.error(
-                f"Failed to get system stats from service: {response.error_message}"
-            )
-            raise HTTPException(
-                status_code=500, detail=f"Service error: {response.error_message}"
-            )
+            logger.error("Failed to get system stats from service")
+            raise HTTPException(status_code=500, detail="Service error")
 
     except Exception as e:
         logger.error(f"Failed to get system stats: {e}")

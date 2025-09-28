@@ -24,6 +24,10 @@ RUN pip install \
 # Copy application code
 COPY . .
 
+# Copy and install ServiceBus package
+COPY libraries/ ./libraries/
+RUN pip install -e ./libraries/servicebus/
+
 # Create non-root user
 RUN useradd -m -u 1000 modui && chown -R modui:modui /app
 USER modui

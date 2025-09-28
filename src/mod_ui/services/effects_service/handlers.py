@@ -8,8 +8,8 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
-from mod_ui.common import ServiceServer
-from mod_ui.common.models import ServiceRequest
+from servicebus import ServiceServer
+from servicebus.models import ServiceRequest
 
 from .models import *
 

@@ -14,7 +14,7 @@ import subprocess
 from datetime import datetime
 from typing import Any, Dict
 
-from mod_ui.common import RequestType, SimpleService, service_handler
+from servicebus import CommConfig, Service, handler, set_config
 
 # Create the service instance with Redis URL from environment
 redis_host = os.getenv("REDIS_HOST", "localhost")
@@ -22,10 +22,13 @@ redis_port = os.getenv("REDIS_PORT", "6379")
 redis_db = os.getenv("REDIS_DB", "0")
 redis_url = f"redis://{redis_host}:{redis_port}/{redis_db}"
 
-service = SimpleService("system-stats-service", redis_url=redis_url)
+# Configure ServiceBus with Redis URL
+config = CommConfig(redis_url=redis_url)
+set_config(config)
+
+service = Service("system-stats-service")
 
 
-@service.enum_handler(RequestType.GET_SYSTEM_INFO)
 async def get_system_info(request) -> Dict[str, Any]:
     """Get comprehensive system information"""
     try:
@@ -79,7 +82,6 @@ async def get_system_info(request) -> Dict[str, Any]:
         }
 
 
-@service.handler("get_system_stats")
 async def get_system_stats(request) -> Dict[str, Any]:
     """Get current system statistics"""
     try:
@@ -254,6 +256,11 @@ def _get_disk_usage() -> float:
         return 0.0
 
 
+# Register the handlers with the service
+service.register_handler("get_system_info", get_system_info)
+service.register_handler("get_system_stats", get_system_stats)
+
+
 async def main():
     """Main entry point for the system stats service"""
     # Configure logging
@@ -267,22 +274,20 @@ async def main():
 
     try:
         # Start the service (this will handle requests)
-        await service.start()
+        async with service:
+            logger.info("System Stats Service started successfully")
 
-        logger.info("System Stats Service started successfully")
-
-        # Keep the service running
-        while True:
-            await asyncio.sleep(1)
+            # Keep the service running
+            while True:
+                await asyncio.sleep(1)
 
     except KeyboardInterrupt:
         logger.info("Received shutdown signal")
     except Exception as e:
         logger.error(f"Service error: {e}")
         raise
-    finally:
-        await service.stop()
-        logger.info("System Stats Service stopped")
+
+    logger.info("System Stats Service stopped")
 
 
 if __name__ == "__main__":

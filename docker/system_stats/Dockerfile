@@ -18,6 +18,10 @@ RUN pip install --no-cache-dir -r requirements-system-stats.txt
 # Copy source code
 COPY src/ ./src/
 
+# Copy and install ServiceBus package
+COPY libraries/ ./libraries/
+RUN pip install -e ./libraries/servicebus/
+
 # Set Python path to include the app directory
 ENV PYTHONPATH=/app/src:/app
 

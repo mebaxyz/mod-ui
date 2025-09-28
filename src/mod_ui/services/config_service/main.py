@@ -14,10 +14,11 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 # Import common service infrastructure
-from src.mod_ui.common import RequestType, ServiceServer
+from servicebus import Service
+from servicebus.config import CommConfig, set_config
 
 # Global service instances
-service_server: Optional[ServiceServer] = None
+service: Optional[Service] = None
 settings_cache: Optional[Dict[str, Any]] = None
 
 # Path to the settings JSON file
@@ -85,7 +86,7 @@ def save_settings(settings: Dict[str, Any]) -> bool:
 
 async def initialize_services():
     """Initialize all services"""
-    global service_server
+    global service
 
     logger = logging.getLogger(__name__)
     logger.info("Starting Config Service v2...")
@@ -94,31 +95,37 @@ async def initialize_services():
         # Load initial configuration
         load_settings()
 
-        # Initialize ServiceServer for Redis pub/sub communication
+        # Initialize Service for Redis pub/sub communication
         redis_host = os.getenv("REDIS_HOST", "localhost")
         redis_port = os.getenv("REDIS_PORT", "6379")
         redis_db = os.getenv("REDIS_DB", "0")
         redis_url = f"redis://{redis_host}:{redis_port}/{redis_db}"
+        
+        # Configure ServiceBus with Docker environment
+        config = CommConfig(redis_url=redis_url)
+        set_config(config)
+        
+        logger.info("Using Redis URL: %s", redis_url)
 
-        service_server = ServiceServer("config", redis_url)
+        service = Service("config")
 
         # Register config handlers
-        service_server.register_handler(
-            RequestType.GET_ALL_CONFIG, handle_get_all_config
+        service.register_handler(
+            "GET_ALL_CONFIG", handle_get_all_config
         )
-        service_server.register_handler(
-            RequestType.GET_CONFIG_SECTION, handle_get_config_section
+        service.register_handler(
+            "GET_CONFIG_SECTION", handle_get_config_section
         )
-        service_server.register_handler(
-            RequestType.GET_CONFIG_VALUE, handle_get_config_value
+        service.register_handler(
+            "GET_CONFIG_VALUE", handle_get_config_value
         )
-        service_server.register_handler(
-            RequestType.SET_CONFIG_VALUE, handle_set_config_value
+        service.register_handler(
+            "SET_CONFIG_VALUE", handle_set_config_value
         )
-        service_server.register_handler(RequestType.RELOAD_CONFIG, handle_reload_config)
+        service.register_handler("RELOAD_CONFIG", handle_reload_config)
 
-        await service_server.start()
-        logger.info("ServiceServer started for Redis pub/sub communication")
+        await service.start()
+        logger.info("Service started for Redis pub/sub communication")
 
         logger.info("Config Service v2 startup complete")
 
@@ -129,14 +136,14 @@ async def initialize_services():
 
 async def shutdown_services():
     """Shutdown all services gracefully"""
-    global service_server
+    global service
 
     logger = logging.getLogger(__name__)
     logger.info("Shutting down Config Service v2...")
 
-    if service_server:
-        await service_server.stop()
-        logger.info("ServiceServer stopped")
+    if service:
+        await service.stop()
+        logger.info("Service stopped")
 
     logger.info("Config Service v2 shutdown complete")
 

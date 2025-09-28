@@ -25,8 +25,7 @@ class MetricsCollector:
         self._is_collecting = False
         self._background_tasks: Set[asyncio.Task] = set()
         
-    @property
-    async def redis(self) -> redis.Redis:
+    async def get_redis(self) -> redis.Redis:
         """Get Redis connection with connection pooling"""
         if self._redis is None:
             if self.config.enable_connection_pooling and self._connection_pool is None:
@@ -50,7 +49,7 @@ class MetricsCollector:
         self._metrics_buffer[service_key].append(metric)
         
         # Also store in Redis for persistence
-        redis_client = await self.redis
+        redis_client = await self.get_redis()
         metric_key = f"metrics:request:{metric.request_id}"
         await redis_client.setex(
             metric_key,
@@ -193,7 +192,7 @@ class MetricsCollector:
                 system_metrics = await self.get_system_metrics()
                 
                 # Store aggregated metrics in Redis
-                redis_client = await self.redis
+                redis_client = await self.get_redis()
                 timestamp = int(time.time())
                 metrics_key = f"metrics:aggregated:{timestamp}"
                 await redis_client.setex(
@@ -214,7 +213,7 @@ class MetricsCollector:
                 await asyncio.sleep(600)
                 
                 # Clean up old Redis metrics
-                redis_client = await self.redis
+                redis_client = await self.get_redis()
                 
                 # Clean up request metrics
                 pattern = "metrics:request:*"
@@ -321,8 +320,7 @@ class HealthMonitor:
         self._health_history: Dict[str, List[ServiceHealth]] = defaultdict(list)
         self._is_monitoring = False
         
-    @property
-    async def redis(self) -> redis.Redis:
+    async def get_redis(self) -> redis.Redis:
         """Get Redis connection"""
         if self._redis is None:
             if self.config.enable_connection_pooling and self._connection_pool is None:
@@ -337,7 +335,7 @@ class HealthMonitor:
 
     async def get_health_summary(self) -> Dict[str, Any]:
         """Get health summary of all services"""
-        redis_client = await self.redis
+        redis_client = await self.get_redis()
         
         # Get all service registrations
         pattern = "service_registry:*"

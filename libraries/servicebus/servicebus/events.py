@@ -29,8 +29,7 @@ class EventBus:
         self._buffer_lock = asyncio.Lock()
         self._background_tasks: Set[asyncio.Task] = set()
         
-    @property
-    async def redis(self) -> redis.Redis:
+    async def get_redis(self) -> redis.Redis:
         """Get Redis connection with connection pooling"""
         if self._redis is None:
             if self.config.enable_connection_pooling and self._connection_pool is None:
@@ -55,7 +54,7 @@ class EventBus:
         Returns:
             Number of subscribers that received the event
         """
-        redis_client = await self.redis
+        redis_client = await self.get_redis()
         channel = f"events:{event.event_type}"
         
         # Publish to Redis
@@ -161,7 +160,7 @@ class EventBus:
 
     async def _event_listening_loop(self) -> None:
         """Main event listening loop"""
-        redis_client = await self.redis
+        redis_client = await self.get_redis()
         pubsub = redis_client.pubsub()
         
         # Subscribe to all event types we're interested in
@@ -285,17 +284,17 @@ class EventPublisher:
         """Publish service started event"""
         event = ServiceEvent(
             event_type="service.started",
-            source_service=self.service_name,
+            service_name=self.service_name,
             timestamp=datetime.utcnow(),
             data=metadata or {}
         )
         return await self.event_bus.publish(event)
-    
+
     async def publish_service_stopped(self, metadata: Optional[Dict[str, Any]] = None) -> int:
         """Publish service stopped event"""
         event = ServiceEvent(
             event_type="service.stopped",
-            source_service=self.service_name,
+            service_name=self.service_name,
             timestamp=datetime.utcnow(),
             data=metadata or {}
         )
@@ -309,7 +308,7 @@ class EventPublisher:
         
         event = ServiceEvent(
             event_type="service.error",
-            source_service=self.service_name,
+            service_name=self.service_name,
             timestamp=datetime.utcnow(),
             data=data
         )
@@ -323,7 +322,7 @@ class EventPublisher:
         """Publish a custom event"""
         event = ServiceEvent(
             event_type=event_type,
-            source_service=self.service_name,
+            service_name=self.service_name,
             timestamp=datetime.utcnow(),
             data=data
         )

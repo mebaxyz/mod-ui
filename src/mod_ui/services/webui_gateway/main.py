@@ -19,7 +19,7 @@ import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from mod_ui.common import ServiceClient
+from servicebus import CommConfig, ServiceClient, set_config
 from src.mod_ui.services.webui_gateway.models import (
     ClientConnection,
     EventSubscription,
@@ -27,9 +27,9 @@ from src.mod_ui.services.webui_gateway.models import (
 )
 
 # Import API routers
+from src.mod_ui.services.webui_gateway.routers import broadcast
+from src.mod_ui.services.webui_gateway.routers import config as config_router
 from src.mod_ui.services.webui_gateway.routers import (
-    broadcast,
-    config,
     connections,
     effects,
     health,
@@ -77,7 +77,12 @@ async def lifespan(app: FastAPI):
         redis_port = os.getenv("REDIS_PORT", "6379")
         redis_db = os.getenv("REDIS_DB", "0")
         redis_url = f"redis://{redis_host}:{redis_port}/{redis_db}"
-        service_client = ServiceClient(redis_url=redis_url)
+
+        # Configure ServiceBus with Redis URL
+        config = CommConfig(redis_url=redis_url)
+        set_config(config)
+
+        service_client = ServiceClient("webui_gateway")
         logger.info(f"Service client initialized with Redis URL: {redis_url}")
 
         # Store services in app state for access from endpoints
@@ -93,7 +98,7 @@ async def lifespan(app: FastAPI):
         legacy.inject_services(connection_manager)
         system.inject_services(service_client)
         session.inject_service_client(service_client)
-        config.inject_service_client(service_client)
+        config_router.inject_service_client(service_client)
 
         logger.info("WebUI Gateway Service startup complete")
 
@@ -159,7 +164,7 @@ app.include_router(system.router, prefix="/api/system", tags=["system"])
 app.include_router(connections.router, prefix="/api/connections", tags=["connections"])
 app.include_router(broadcast.router, prefix="/api/broadcast", tags=["broadcast"])
 app.include_router(session.router, prefix="/api/session", tags=["session"])
-app.include_router(config.router, prefix="/api/config", tags=["config"])
+app.include_router(config_router.router, prefix="/api/config", tags=["config"])
 app.include_router(effects.router, prefix="/api", tags=["effects"])
 app.include_router(legacy.router, prefix="/api/legacy", tags=["legacy"])
 

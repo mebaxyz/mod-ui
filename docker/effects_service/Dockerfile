@@ -25,6 +25,10 @@ COPY mod/ mod/
 COPY modtools/ modtools/
 COPY utils/ utils/
 
+# Copy and install ServiceBus package
+COPY libraries/ libraries/
+RUN pip install -e ./libraries/servicebus/
+
 # Compile C++ utilities
 RUN cd utils && make
 

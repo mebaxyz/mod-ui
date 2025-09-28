@@ -2,7 +2,25 @@
 Session Management API Router for WebUI Gateway
 
 This router handles all session-related HTTP requests and communicates with
-the Session Service v2 via Redis pub/sub for managing MOD device sessions.
+the Session S        response = await session_service_client.call(
+            target_service="session",
+            request_type="control_transport",
+            data={"action": action},
+        )
+
+        if response is not None:
+            return {
+                "ok": True,
+                "transport_state": response.get("transport_state"),
+                "message": response.get(
+                    "message", f"Transport {action} successful"
+                ),
+            }
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to {action} transport",
+            ) pub/sub for managing MOD device sessions.
 """
 
 from datetime import datetime
@@ -10,7 +28,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException
 
-from mod_ui.common import RequestType, ServiceClient
+from servicebus import ServiceClient
 
 router = APIRouter()
 
@@ -31,14 +49,14 @@ async def get_session_info() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Session service not available")
 
     try:
-        response = await session_service_client.make_request(
-            service_name="session",
-            request_type=RequestType.GET_SESSION_STATE,
+        response = await session_service_client.call(
+            target_service="session",
+            request_type="get_session_state",
             data={},
         )
 
-        if response.data.get("success"):
-            session_data = response.data.get("session", {})
+        if response is not None:
+            session_data = response.get("session", response)
 
             # Transform the response to match expected format
             return {
@@ -76,14 +94,14 @@ async def get_tempo() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Session service not available")
 
     try:
-        response = await session_service_client.make_request(
-            service_name="session",
-            request_type=RequestType.GET_SESSION_STATE,
+        response = await session_service_client.call(
+            target_service="session",
+            request_type="get_session_state",
             data={},
         )
 
-        if response.data.get("success"):
-            session_data = response.data.get("session", {})
+        if response is not None:
+            session_data = response.get("session", response)
             return {
                 "ok": True,
                 "tempo_bpm": session_data.get("tempo_bpm", 120.0),
@@ -91,7 +109,7 @@ async def get_tempo() -> Dict[str, Any]:
         else:
             raise HTTPException(
                 status_code=500,
-                detail=response.data.get("error", "Failed to get tempo"),
+                detail="Failed to get tempo",
             )
 
     except Exception as e:
@@ -105,22 +123,22 @@ async def set_tempo(bpm: float) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Session service not available")
 
     try:
-        response = await session_service_client.make_request(
-            service_name="session",
-            request_type=RequestType.SET_SESSION_TEMPO,
+        response = await session_service_client.call(
+            target_service="session",
+            request_type="set_session_tempo",
             data={"bpm": bpm},
         )
 
-        if response.data.get("success"):
+        if response is not None:
             return {
                 "ok": True,
-                "tempo_bpm": response.data.get("tempo_bpm", bpm),
-                "message": response.data.get("message", "Tempo set successfully"),
+                "tempo_bpm": response.get("tempo_bpm", bpm),
+                "message": response.get("message", "Tempo set successfully"),
             }
         else:
             raise HTTPException(
                 status_code=500,
-                detail=response.data.get("error", "Failed to set tempo"),
+                detail="Failed to set tempo",
             )
 
     except Exception as e:
@@ -140,9 +158,9 @@ async def transport_control(action: str) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Session service not available")
 
     try:
-        response = await session_service_client.make_request(
-            service_name="session",
-            request_type=RequestType.CONTROL_TRANSPORT,
+        response = await session_service_client.call(
+            target_service="session",
+            request_type="control_transport",
             data={"action": action},
         )
 
@@ -171,21 +189,21 @@ async def get_session_stats() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Session service not available")
 
     try:
-        response = await session_service_client.make_request(
-            service_name="session",
-            request_type=RequestType.GET_SESSION_STATS,
+        response = await session_service_client.call(
+            target_service="session",
+            request_type="get_session_stats",
             data={},
         )
 
-        if response.data.get("success"):
+        if response is not None:
             return {
                 "ok": True,
-                **response.data.get("stats", {}),
+                **response.get("stats", response if isinstance(response, dict) else {}),
             }
         else:
             raise HTTPException(
                 status_code=500,
-                detail=response.data.get("error", "Failed to get stats"),
+                detail="Failed to get stats",
             )
 
     except Exception as e:

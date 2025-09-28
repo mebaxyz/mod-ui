@@ -12,7 +12,7 @@ import signal
 from typing import Optional
 
 # Import common service infrastructure
-from src.mod_ui.common import RequestType, ServiceServer
+from servicebus import CommConfig, ServiceServer, set_config
 
 from .services.state_manager import StateManagerService
 from .utils.event_bus import EventBus, InMemoryEventBus, RedisEventBus
@@ -60,35 +60,27 @@ async def initialize_services():
         redis_db = os.getenv("REDIS_DB", "0")
         redis_url = f"redis://{redis_host}:{redis_port}/{redis_db}"
 
-        service_server = ServiceServer("session", redis_url)
+        # Configure ServiceBus
+        config = CommConfig(redis_url=redis_url)
+        set_config(config)
+
+        service_server = ServiceServer("session")
 
         # Register session handlers
+        service_server.register_handler("get_session_state", handle_get_session_state)
         service_server.register_handler(
-            RequestType.GET_SESSION_STATE, handle_get_session_state
+            "update_session_state", handle_update_session_state
         )
+        service_server.register_handler("control_transport", handle_control_transport)
+        service_server.register_handler("get_session_status", handle_get_session_status)
+        service_server.register_handler("set_session_tempo", handle_set_session_tempo)
+        service_server.register_handler("get_session_stats", handle_get_session_stats)
+        service_server.register_handler("start_session", handle_start_session)
+        service_server.register_handler("stop_session", handle_stop_session)
+        service_server.register_handler("reset_session", handle_reset_session)
+        service_server.register_handler("set_session_config", handle_set_session_config)
         service_server.register_handler(
-            RequestType.UPDATE_SESSION_STATE, handle_update_session_state
-        )
-        service_server.register_handler(
-            RequestType.CONTROL_TRANSPORT, handle_control_transport
-        )
-        service_server.register_handler(
-            RequestType.GET_SESSION_STATUS, handle_get_session_status
-        )
-        service_server.register_handler(
-            RequestType.SET_SESSION_TEMPO, handle_set_session_tempo
-        )
-        service_server.register_handler(
-            RequestType.GET_SESSION_STATS, handle_get_session_stats
-        )
-        service_server.register_handler(RequestType.START_SESSION, handle_start_session)
-        service_server.register_handler(RequestType.STOP_SESSION, handle_stop_session)
-        service_server.register_handler(RequestType.RESET_SESSION, handle_reset_session)
-        service_server.register_handler(
-            RequestType.SET_SESSION_CONFIG, handle_set_session_config
-        )
-        service_server.register_handler(
-            RequestType.RESET_SESSION_STATS, handle_reset_session_stats
+            "reset_session_stats", handle_reset_session_stats
         )
 
         await service_server.start()
