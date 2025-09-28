@@ -64,7 +64,7 @@ class PluginParameterChange(BaseModel):
 # JACK Management Models
 class JackPortInfo(BaseModel):
     """Information about a JACK port"""
-    
+
     name: str
     alias: Optional[str] = None
     is_audio: bool
@@ -74,7 +74,7 @@ class JackPortInfo(BaseModel):
 
 class JackConnectionInfo(BaseModel):
     """JACK connection information"""
-    
+
     output_port: str
     input_port: str
     connection_id: Optional[str] = None
@@ -82,7 +82,7 @@ class JackConnectionInfo(BaseModel):
 
 class JackData(BaseModel):
     """JACK system data"""
-    
+
     cpu_load: float = 0.0
     xruns: int = 0
     rolling: bool = False
@@ -95,7 +95,7 @@ class JackData(BaseModel):
 # LV2 Plugin Management Models
 class LV2PluginPort(BaseModel):
     """LV2 plugin port information"""
-    
+
     symbol: str
     name: str
     is_input: bool
@@ -111,7 +111,7 @@ class LV2PluginPort(BaseModel):
 
 class LV2PluginInfo(BaseModel):
     """Detailed LV2 plugin information"""
-    
+
     uri: str
     name: str
     brand: str = ""
@@ -138,7 +138,7 @@ class AudioEngineState(BaseModel):
     cv_ports_in: List[AudioPortInfo] = Field(default_factory=list)
     cv_ports_out: List[AudioPortInfo] = Field(default_factory=list)
     midi_ports: List[AudioPortInfo] = Field(default_factory=list)
-    
+
     # JACK specific state
     jack_data: JackData = Field(default_factory=JackData)
     jack_hardware_ports: List[JackPortInfo] = Field(default_factory=list)
@@ -208,51 +208,51 @@ class BypassPluginCommand(BaseModel):
 # JACK Command Types
 class ConnectJackPortsCommand(BaseModel):
     """Connect two JACK ports"""
-    
+
     output_port: str
     input_port: str
 
 
 class DisconnectJackPortsCommand(BaseModel):
     """Disconnect two JACK ports"""
-    
+
     output_port: str
     input_port: str
 
 
 class DisconnectAllJackPortsCommand(BaseModel):
     """Disconnect all connections from a JACK port"""
-    
+
     port_name: str
 
 
 class SetJackBufferSizeCommand(BaseModel):
     """Set JACK buffer size"""
-    
+
     buffer_size: int
 
 
 # LV2 Command Types
 class ScanPluginsCommand(BaseModel):
     """Rescan all LV2 plugins"""
-    
+
     force_refresh: bool = False
 
 
 class AddBundleCommand(BaseModel):
     """Add an LV2 bundle to the plugin world"""
-    
+
     bundle_path: str
 
 
 class RemoveBundleCommand(BaseModel):
     """Remove an LV2 bundle from the plugin world"""
-    
+
     bundle_path: str
     resource: Optional[str] = None
 
 
 class GetPluginInfoCommand(BaseModel):
     """Get detailed information about an LV2 plugin"""
-    
+
     plugin_uri: str

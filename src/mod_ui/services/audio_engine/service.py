@@ -18,35 +18,34 @@ from .connection import (
     ConnectionStatus,
     ModHostConnectionManager,
 )
-from .jack_lv2_utils import get_jack_manager, get_lv2_manager, cleanup_managers
-from .models import (
+from .jack_lv2_utils import cleanup_managers, get_jack_manager, get_lv2_manager
+from .models import (  # JACK and LV2 models
+    AddBundleCommand,
     AddPluginCommand,
     AudioConnection,
     AudioEngineState,
     AudioPortInfo,
     BypassPluginCommand,
+    ConnectJackPortsCommand,
     ConnectPortsCommand,
+    DisconnectAllJackPortsCommand,
+    DisconnectJackPortsCommand,
     DisconnectPortsCommand,
+    GetPluginInfoCommand,
+    JackConnectionInfo,
+    JackData,
+    JackPortInfo,
     LoadPresetCommand,
+    LV2PluginInfo,
     PluginInstance,
     PluginParameterChange,
+    RemoveBundleCommand,
     RemovePluginCommand,
+    ScanPluginsCommand,
+    SetJackBufferSizeCommand,
     SetParameterCommand,
     SetTransportCommand,
     TransportState,
-    # JACK and LV2 models
-    ConnectJackPortsCommand,
-    DisconnectJackPortsCommand,
-    DisconnectAllJackPortsCommand,
-    SetJackBufferSizeCommand,
-    ScanPluginsCommand,
-    AddBundleCommand,
-    RemoveBundleCommand,
-    GetPluginInfoCommand,
-    JackData,
-    JackPortInfo,
-    JackConnectionInfo,
-    LV2PluginInfo,
 )
 
 logger = logging.getLogger(__name__)
@@ -75,10 +74,10 @@ class AudioEngineService:
         success = await self.connection.connect()
         if success:
             await self._initialize_state()
-        
+
         # Initialize JACK data in state
         await self._update_jack_state()
-        
+
         return success
 
     async def stop(self):
@@ -118,9 +117,7 @@ class AudioEngineService:
         response = await self.connection.send_command(audio_cmd)
 
         if response.status != "success":
-            raise RuntimeError(
-                f"Failed to add plugin: {response.error}"
-            )
+            raise RuntimeError(f"Failed to add plugin: {response.error}")
 
         # Create plugin instance
         plugin = PluginInstance(
@@ -158,9 +155,7 @@ class AudioEngineService:
         response = await self.connection.send_command(audio_cmd)
 
         if response.status != "success":
-            raise RuntimeError(
-                f"Failed to remove plugin: {response.error}"
-            )
+            raise RuntimeError(f"Failed to remove plugin: {response.error}")
 
         # Remove from local state
         del self.state.plugins[command.instance_id]
@@ -201,9 +196,7 @@ class AudioEngineService:
         response = await self.connection.send_command(audio_cmd)
 
         if response.status != "success":
-            raise RuntimeError(
-                f"Failed to set parameter: {response.error}"
-            )
+            raise RuntimeError(f"Failed to set parameter: {response.error}")
 
         # Update local state
         plugin = self.state.plugins[command.instance_id]
@@ -234,9 +227,7 @@ class AudioEngineService:
         response = await self.connection.send_command(audio_cmd)
 
         if response.status != "success":
-            raise RuntimeError(
-                f"Failed to connect ports: {response.error}"
-            )
+            raise RuntimeError(f"Failed to connect ports: {response.error}")
 
         # Create connection
         connection = AudioConnection(
@@ -267,9 +258,7 @@ class AudioEngineService:
         response = await self.connection.send_command(audio_cmd)
 
         if response.status != "success":
-            raise RuntimeError(
-                f"Failed to disconnect ports: {response.error}"
-            )
+            raise RuntimeError(f"Failed to disconnect ports: {response.error}")
 
         # Remove from local state
         self.state.connections = [
@@ -349,9 +338,7 @@ class AudioEngineService:
         response = await self.connection.send_command(audio_cmd)
 
         if response.status != "success":
-            raise RuntimeError(
-                f"Failed to load preset: {response.error}"
-            )
+            raise RuntimeError(f"Failed to load preset: {response.error}")
 
         # Update local state
         plugin = self.state.plugins[command.instance_id]
@@ -386,9 +373,7 @@ class AudioEngineService:
         response = await self.connection.send_command(audio_cmd)
 
         if response.status != "success":
-            raise RuntimeError(
-                f"Failed to bypass plugin: {response.error}"
-            )
+            raise RuntimeError(f"Failed to bypass plugin: {response.error}")
 
         # Update local state
         plugin = self.state.plugins[command.instance_id]
@@ -462,7 +447,7 @@ class AudioEngineService:
         # - Current connections
         # - Transport state
         # - Available ports
-        
+
         # Initialize JACK and LV2 data
         await self._update_jack_state()
 
@@ -478,82 +463,108 @@ class AudioEngineService:
             # Get current JACK data
             jack_data = self.jack_manager.get_jack_data()
             self.state.jack_data = jack_data
-            
+
             # Get hardware ports
-            audio_in_ports = self.jack_manager.get_hardware_ports(is_audio=True, is_output=False)
-            audio_out_ports = self.jack_manager.get_hardware_ports(is_audio=True, is_output=True)
-            
+            audio_in_ports = self.jack_manager.get_hardware_ports(
+                is_audio=True, is_output=False
+            )
+            audio_out_ports = self.jack_manager.get_hardware_ports(
+                is_audio=True, is_output=True
+            )
+
             self.state.jack_hardware_ports = audio_in_ports + audio_out_ports
-            
+
         except Exception as e:
             logger.warning(f"Failed to update JACK state: {e}")
 
     # =============================================================================
-    # JACK Audio Connection Management Methods  
+    # JACK Audio Connection Management Methods
     # =============================================================================
 
     async def get_jack_data(self) -> JackData:
         """Get current JACK system data"""
         return self.jack_manager.get_jack_data()
 
-    async def get_jack_hardware_ports(self, is_audio: bool = True, is_output: bool = False) -> List[JackPortInfo]:
+    async def get_jack_hardware_ports(
+        self, is_audio: bool = True, is_output: bool = False
+    ) -> List[JackPortInfo]:
         """Get JACK hardware ports"""
         return self.jack_manager.get_hardware_ports(is_audio, is_output)
 
-    async def connect_jack_ports(self, command: ConnectJackPortsCommand) -> JackConnectionInfo:
+    async def connect_jack_ports(
+        self, command: ConnectJackPortsCommand
+    ) -> JackConnectionInfo:
         """Connect two JACK ports"""
-        success = self.jack_manager.connect_ports(command.output_port, command.input_port)
+        success = self.jack_manager.connect_ports(
+            command.output_port, command.input_port
+        )
         if not success:
             raise RuntimeError(
-                status_code=500, 
-                detail=f"Failed to connect JACK ports {command.output_port} -> {command.input_port}"
+                status_code=500,
+                detail=f"Failed to connect JACK ports {command.output_port} -> {command.input_port}",
             )
-        
+
         connection = JackConnectionInfo(
             output_port=command.output_port,
             input_port=command.input_port,
-            connection_id=f"{command.output_port}:{command.input_port}"
+            connection_id=f"{command.output_port}:{command.input_port}",
         )
-        
+
         # Update local state
         self.state.jack_connections.append(connection)
-        
-        logger.info("Connected JACK ports %s -> %s", command.output_port, command.input_port)
+
+        logger.info(
+            "Connected JACK ports %s -> %s", command.output_port, command.input_port
+        )
         return connection
 
     async def disconnect_jack_ports(self, command: DisconnectJackPortsCommand) -> bool:
         """Disconnect two JACK ports"""
-        success = self.jack_manager.disconnect_ports(command.output_port, command.input_port)
+        success = self.jack_manager.disconnect_ports(
+            command.output_port, command.input_port
+        )
         if not success:
             raise RuntimeError(
                 status_code=500,
-                detail=f"Failed to disconnect JACK ports {command.output_port} -> {command.input_port}"
+                detail=f"Failed to disconnect JACK ports {command.output_port} -> {command.input_port}",
             )
-        
+
         # Update local state
         self.state.jack_connections = [
-            conn for conn in self.state.jack_connections
-            if not (conn.output_port == command.output_port and conn.input_port == command.input_port)
+            conn
+            for conn in self.state.jack_connections
+            if not (
+                conn.output_port == command.output_port
+                and conn.input_port == command.input_port
+            )
         ]
-        
-        logger.info("Disconnected JACK ports %s -> %s", command.output_port, command.input_port)
+
+        logger.info(
+            "Disconnected JACK ports %s -> %s", command.output_port, command.input_port
+        )
         return True
 
-    async def disconnect_all_jack_ports(self, command: DisconnectAllJackPortsCommand) -> bool:
+    async def disconnect_all_jack_ports(
+        self, command: DisconnectAllJackPortsCommand
+    ) -> bool:
         """Disconnect all connections from a JACK port"""
         success = self.jack_manager.disconnect_all_ports(command.port_name)
         if not success:
             raise RuntimeError(
                 status_code=500,
-                detail=f"Failed to disconnect all ports from {command.port_name}"
+                detail=f"Failed to disconnect all ports from {command.port_name}",
             )
-        
+
         # Update local state
         self.state.jack_connections = [
-            conn for conn in self.state.jack_connections
-            if not (conn.output_port == command.port_name or conn.input_port == command.port_name)
+            conn
+            for conn in self.state.jack_connections
+            if not (
+                conn.output_port == command.port_name
+                or conn.input_port == command.port_name
+            )
         ]
-        
+
         logger.info("Disconnected all ports from %s", command.port_name)
         return True
 
@@ -573,9 +584,9 @@ class AudioEngineService:
         if not success:
             raise RuntimeError(
                 status_code=500,
-                detail=f"Failed to set JACK buffer size to {command.buffer_size}"
+                detail=f"Failed to set JACK buffer size to {command.buffer_size}",
             )
-        
+
         logger.info("Set JACK buffer size to %d", command.buffer_size)
         return True
 
@@ -591,13 +602,14 @@ class AudioEngineService:
         """Get all available LV2 plugins (lightweight info)"""
         return self.lv2_manager.get_all_plugins()
 
-    async def get_plugin_info(self, command: GetPluginInfoCommand) -> Optional[LV2PluginInfo]:
+    async def get_plugin_info(
+        self, command: GetPluginInfoCommand
+    ) -> Optional[LV2PluginInfo]:
         """Get detailed information about an LV2 plugin"""
         plugin_info = self.lv2_manager.get_plugin_info(command.plugin_uri)
         if not plugin_info:
             raise RuntimeError(
-                status_code=404,
-                detail=f"Plugin not found: {command.plugin_uri}"
+                status_code=404, detail=f"Plugin not found: {command.plugin_uri}"
             )
         return plugin_info
 
@@ -610,33 +622,34 @@ class AudioEngineService:
             return count
         except Exception as e:
             logger.error(f"Failed to scan plugins: {e}")
-            raise RuntimeError(
-                status_code=500,
-                detail=f"Failed to scan plugins: {e}"
-            )
+            raise RuntimeError(status_code=500, detail=f"Failed to scan plugins: {e}")
 
     async def add_bundle(self, command: AddBundleCommand) -> List[str]:
         """Add an LV2 bundle to the plugin world"""
         try:
             added_plugins = self.lv2_manager.add_bundle(command.bundle_path)
-            logger.info("Added bundle %s with %d plugins", command.bundle_path, len(added_plugins))
+            logger.info(
+                "Added bundle %s with %d plugins",
+                command.bundle_path,
+                len(added_plugins),
+            )
             return added_plugins
         except Exception as e:
             logger.error(f"Failed to add bundle {command.bundle_path}: {e}")
-            raise RuntimeError(
-                status_code=500,
-                detail=f"Failed to add bundle: {e}"
-            )
+            raise RuntimeError(status_code=500, detail=f"Failed to add bundle: {e}")
 
     async def remove_bundle(self, command: RemoveBundleCommand) -> List[str]:
         """Remove an LV2 bundle from the plugin world"""
         try:
-            removed_plugins = self.lv2_manager.remove_bundle(command.bundle_path, command.resource)
-            logger.info("Removed bundle %s with %d plugins", command.bundle_path, len(removed_plugins))
+            removed_plugins = self.lv2_manager.remove_bundle(
+                command.bundle_path, command.resource
+            )
+            logger.info(
+                "Removed bundle %s with %d plugins",
+                command.bundle_path,
+                len(removed_plugins),
+            )
             return removed_plugins
         except Exception as e:
             logger.error(f"Failed to remove bundle {command.bundle_path}: {e}")
-            raise RuntimeError(
-                status_code=500,
-                detail=f"Failed to remove bundle: {e}"
-            )
+            raise RuntimeError(status_code=500, detail=f"Failed to remove bundle: {e}")
