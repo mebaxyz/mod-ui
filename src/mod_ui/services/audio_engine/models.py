@@ -1,7 +1,7 @@
 """
 Audio Engine Service Models
 
-Defines the data models for audio engine operations.
+Defines the data models for audio engine operations, including JACK connections and LV2 plugin management.
 """
 
 from enum import Enum
@@ -61,6 +61,72 @@ class PluginParameterChange(BaseModel):
     timestamp: Optional[float] = None
 
 
+# JACK Management Models
+class JackPortInfo(BaseModel):
+    """Information about a JACK port"""
+    
+    name: str
+    alias: Optional[str] = None
+    is_audio: bool
+    is_output: bool
+    connected_ports: List[str] = Field(default_factory=list)
+
+
+class JackConnectionInfo(BaseModel):
+    """JACK connection information"""
+    
+    output_port: str
+    input_port: str
+    connection_id: Optional[str] = None
+
+
+class JackData(BaseModel):
+    """JACK system data"""
+    
+    cpu_load: float = 0.0
+    xruns: int = 0
+    rolling: bool = False
+    bpb: float = 4.0
+    bpm: float = 120.0
+    buffer_size: int = 512
+    sample_rate: float = 48000.0
+
+
+# LV2 Plugin Management Models
+class LV2PluginPort(BaseModel):
+    """LV2 plugin port information"""
+    
+    symbol: str
+    name: str
+    is_input: bool
+    is_audio: bool
+    is_cv: bool
+    is_midi: bool
+    is_control: bool
+    default_value: Optional[float] = None
+    minimum_value: Optional[float] = None
+    maximum_value: Optional[float] = None
+    scale_points: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class LV2PluginInfo(BaseModel):
+    """Detailed LV2 plugin information"""
+    
+    uri: str
+    name: str
+    brand: str = ""
+    comment: str = ""
+    version: str = ""
+    license: str = ""
+    author: str = ""
+    category: List[str] = Field(default_factory=list)
+    bundle_path: str = ""
+    binary: str = ""
+    ports: List[LV2PluginPort] = Field(default_factory=list)
+    presets: List[Dict[str, str]] = Field(default_factory=list)
+    has_gui: bool = False
+
+
 class AudioEngineState(BaseModel):
     """Complete state of the audio engine"""
 
@@ -72,6 +138,11 @@ class AudioEngineState(BaseModel):
     cv_ports_in: List[AudioPortInfo] = Field(default_factory=list)
     cv_ports_out: List[AudioPortInfo] = Field(default_factory=list)
     midi_ports: List[AudioPortInfo] = Field(default_factory=list)
+    
+    # JACK specific state
+    jack_data: JackData = Field(default_factory=JackData)
+    jack_hardware_ports: List[JackPortInfo] = Field(default_factory=list)
+    jack_connections: List[JackConnectionInfo] = Field(default_factory=list)
 
 
 # Command types for common operations
@@ -132,3 +203,56 @@ class BypassPluginCommand(BaseModel):
 
     instance_id: str
     bypass: bool
+
+
+# JACK Command Types
+class ConnectJackPortsCommand(BaseModel):
+    """Connect two JACK ports"""
+    
+    output_port: str
+    input_port: str
+
+
+class DisconnectJackPortsCommand(BaseModel):
+    """Disconnect two JACK ports"""
+    
+    output_port: str
+    input_port: str
+
+
+class DisconnectAllJackPortsCommand(BaseModel):
+    """Disconnect all connections from a JACK port"""
+    
+    port_name: str
+
+
+class SetJackBufferSizeCommand(BaseModel):
+    """Set JACK buffer size"""
+    
+    buffer_size: int
+
+
+# LV2 Command Types
+class ScanPluginsCommand(BaseModel):
+    """Rescan all LV2 plugins"""
+    
+    force_refresh: bool = False
+
+
+class AddBundleCommand(BaseModel):
+    """Add an LV2 bundle to the plugin world"""
+    
+    bundle_path: str
+
+
+class RemoveBundleCommand(BaseModel):
+    """Remove an LV2 bundle from the plugin world"""
+    
+    bundle_path: str
+    resource: Optional[str] = None
+
+
+class GetPluginInfoCommand(BaseModel):
+    """Get detailed information about an LV2 plugin"""
+    
+    plugin_uri: str

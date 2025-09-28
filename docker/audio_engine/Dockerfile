@@ -29,5 +29,5 @@ ENV PYTHONPATH=/app/src
 # Expose port
 EXPOSE 8003
 
-# Run the ServiceBus version instead of HTTP
-CMD ["python", "-m", "src.mod_ui.services.audio_engine.servicebus_main"]
+# Run the audio engine service
+CMD ["python", "-m", "src.mod_ui.services.audio_engine.main"]
