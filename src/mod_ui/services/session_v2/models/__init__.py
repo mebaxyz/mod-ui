@@ -323,6 +323,36 @@ class SystemStats(BaseModel):
 from .events import EventType
 from .events import SessionEvent as Event
 
+# Import plugin and pedalboard models
+from .plugin import (
+    Connection,
+    ConnectionRequest,
+    ParameterRange,
+    ParameterSetRequest,
+    PedalboardInfo,
+    PluginAddRequest,
+    PluginInfo,
+    PluginInstance,
+    PluginParameter,
+    PluginPort,
+    PluginPortType,
+    PluginRemoveRequest,
+    PresetRequest,
+)
+
+# Import session models
+from .session import (
+    AddressingInfo,
+    BankInfo,
+    MidiMapping,
+    RecordingState,
+    SessionState,
+    SessionStatus,
+    SnapshotData,
+    TransportState,
+    TransportSyncMode,
+)
+
 # Export all models
 __all__ = [
     # Core models
@@ -336,8 +366,26 @@ __all__ = [
     "SessionState",
     "SessionStatus",
     "TransportState",
+    "TransportSyncMode",
     "HardwareDevice",
     "SystemStats",
+    # Plugin models
+    "ParameterRange",
+    "PluginInfo",
+    "PluginInstance",
+    "Connection",
+    "PedalboardInfo",
+    "PluginAddRequest",
+    "PluginRemoveRequest",
+    "ParameterSetRequest",
+    "ConnectionRequest",
+    "PresetRequest",
+    # Session models
+    "MidiMapping",
+    "AddressingInfo",
+    "SnapshotData",
+    "RecordingState",
+    "BankInfo",
     # Event models
     "Event",
     "EventType",

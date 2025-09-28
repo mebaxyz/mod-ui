@@ -84,7 +84,7 @@ class StateManagerService:
                 event = SessionEvent(
                     event_type=EventType.SESSION_STARTED,
                     source_service="state_manager",
-                    session_id=self.session_state.session_id,
+                    session_id=str(self.session_state.session_id),
                     data={"status": self.session_state.status.value},
                 )
                 await self.event_publisher.publish(event)

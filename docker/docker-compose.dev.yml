@@ -76,6 +76,7 @@ services:
       - PYTHONPATH=/app/src:/app
     depends_on:
       - redis
+      - mod-audio-engine
     networks:
       - mod-network
     healthcheck:
@@ -240,6 +241,36 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+  mod-audio-engine:
+    build:
+      context: ..
+      dockerfile: docker/audio_engine/Dockerfile
+    container_name: mod-ui-audio-engine
+    restart: unless-stopped
+    # No HTTP port needed for ServiceBus communication
+    volumes:
+      - ../src:/app/src
+      - ../libraries:/app/libraries
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - MOD_HOST_HOST=mod-host  # mod-host service name
+      - MOD_HOST_WRITE_PORT=5555
+      - MOD_HOST_READ_PORT=5556
+      - LOG_LEVEL=INFO
+      - PYTHONPATH=/app/src:/app
+    depends_on:
+      - redis
+    networks:
+      - mod-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import redis; redis.Redis(host='redis').ping()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   redis:
     image: redis:7-alpine

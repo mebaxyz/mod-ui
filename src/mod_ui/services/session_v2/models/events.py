@@ -80,6 +80,7 @@ class EventType(str, Enum):
     SESSION_ERROR = "session_error"
     SESSION_TRANSPORT_CHANGED = "session_transport_changed"
     SESSION_CONFIG_CHANGED = "session_config_changed"
+    SESSION_WEBSOCKET_MESSAGE = "session_websocket_message"
 
     # System events
     SYSTEM_STATS_UPDATED = "system_stats_updated"
