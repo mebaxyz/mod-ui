@@ -5,15 +5,28 @@ This router handles configuration-related HTTP requests and communicates with
 the Configuration Service via Redis pub/sub.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Form, HTTPException
+from pydantic import BaseModel
 from servicebus import ServiceClient
 
 router = APIRouter()
 
 # Service client for communicating with config service
 config_service_client: Optional[ServiceClient] = None
+
+
+class ConfigQueriesRequest(BaseModel):
+    """Request model for batch config queries"""
+
+    queries: Dict[str, Any]  # Keys are dot-notation paths like "system.version"
+
+
+class ConfigQueriesResponse(BaseModel):
+    """Response model for batch config queries"""
+
+    results: Dict[str, Any]  # Same keys as input, with resolved values
 
 
 def inject_service_client(client: ServiceClient):
@@ -30,6 +43,7 @@ async def get_config_overview() -> Dict[str, Any]:
             "/api/config/settings",
             "/api/config/settings/{section}",
             "/api/config/settings/{section}/{key}",
+            "/api/config/settings/batch",
             "/api/config/reload",
         ],
         "description": "MOD UI Configuration Service endpoints",
@@ -208,3 +222,125 @@ async def config_health_check() -> Dict[str, Any]:
             "settings_loaded": False,
             "error": str(e),
         }
+
+
+@router.post("/settings/batch")
+async def get_config_batch(request: ConfigQueriesRequest) -> ConfigQueriesResponse:
+    """
+    Get multiple configuration values in a single request.
+    Accepts a configQueries-like object and returns populated values.
+
+    Example request:
+    {
+        "queries": {
+            "system.version": null,
+            "system.cloud_url": null,
+            "device.host": null
+        }
+    }
+    """
+    if not config_service_client:
+        raise HTTPException(status_code=500, detail="Config service not available")
+
+    results = {}
+
+    # Group queries by section for efficient batch processing
+    sections_to_fetch = {}
+    for key_path in request.queries.keys():
+        if "." in key_path:
+            section, key = key_path.split(".", 1)
+            if section not in sections_to_fetch:
+                sections_to_fetch[section] = []
+            sections_to_fetch[section].append((key_path, key))
+        else:
+            # Handle keys without section (shouldn't happen with current configQueries)
+            results[key_path] = None
+
+    # Fetch each section and extract requested keys
+    for section, keys_info in sections_to_fetch.items():
+        try:
+            section_data = await config_service_client.call(
+                target_service="config",
+                request_type="GET_CONFIG_SECTION",
+                data={"section": section},
+            )
+
+            if section_data is not None:
+                for key_path, key in keys_info:
+                    results[key_path] = section_data.get(key, None)
+            else:
+                # Section not found, set all keys to None
+                for key_path, key in keys_info:
+                    results[key_path] = None
+
+        except Exception as e:
+            # On error, set all keys in this section to None
+            for key_path, key in keys_info:
+                results[key_path] = None
+
+    return ConfigQueriesResponse(results=results)
+
+
+@router.post("/set")
+async def set_config_value_legacy(
+    key: str = Form(...), value: str = Form(...)
+) -> Dict[str, Any]:
+    """
+    Legacy config set endpoint for backward compatibility.
+
+    This endpoint maintains compatibility with the old /config/set API that the frontend
+    JavaScript uses. It expects form data with 'key' and 'value' parameters and parses
+    the key to determine section.key format for the modern API.
+    """
+    if not config_service_client:
+        raise HTTPException(status_code=500, detail="Config service not available")
+
+    try:
+        # Parse the key to determine section and key
+        # Most legacy keys are in format "section.key" or just "key"
+        if "." in key:
+            section, config_key = key.split(".", 1)
+        else:
+            # For keys without section, assume they go in a "general" section
+            section = "general"
+            config_key = key
+
+        # Use the modern config service API
+        response = await config_service_client.call(
+            target_service="config",
+            request_type="SET_CONFIG_VALUE",
+            data={"section": section, "key": config_key, "value": value},
+        )
+
+        if response is not None:
+            return {
+                "ok": True,
+                "message": "Configuration updated",
+                "key": key,
+                "value": value,
+            }
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to set config value",
+            )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/test-frontend")
+async def test_frontend_config() -> Dict[str, Any]:
+    """Test endpoint to verify frontend config integration"""
+    return {
+        "message": "Frontend config test endpoint",
+        "timestamp": "2024-01-01T00:00:00Z",
+        "sample_batch_request": {
+            "queries": {
+                "system.version": None,
+                "system.cloud_url": None,
+                "device.host": None,
+            }
+        },
+        "instructions": "POST this sample to /api/config/settings/batch to test batch config loading",
+    }

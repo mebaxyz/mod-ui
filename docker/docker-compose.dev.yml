@@ -1,45 +1,6 @@
 # Docker compose development environment for MOD UI - Modular FastAPI Architecture
 
 services:
-  mod-api:
-    build:
-      context: ..
-      dockerfile: docker/api/Dockerfile
-    container_name: mod-ui-api
-    restart: unless-stopped
-    ports:
-      - "8888:8888"
-    volumes:
-      - ../src:/app/src
-      - ../src/mod_ui_original:/app/mod  # Original code archive
-      - ../src/mod_ui/utils/modtools:/app/modtools  # Copied utilities
-      - ../utils:/app/utils
-      - ../src/mod_ui_original/html:/app/html  # Original web assets
-      - ../default.pedalboard:/app/default.pedalboard
-      - ../config:/app/config  # Configuration files
-      - mod-data:/app/data
-      - /tmp/.X11-unix:/tmp/.X11-unix:ro
-    environment:
-      - MOD_DEBUG=1
-      - MOD_PORT=8888
-      - MOD_HOST=0.0.0.0
-      - MOD_DATA_DIR=/app/data
-      - MOD_HTML_DIR=/app/html
-      - MOD_LOG=1
-      - PYTHONPATH=/app
-      - LD_LIBRARY_PATH=/app/utils:/app/modtools
-    devices:
-      - /dev/snd:/dev/snd
-    privileged: true
-    depends_on:
-      - mod-session-v2  # Modern FastAPI-based session service
-    networks:
-      - mod-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8888/ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
   mod-web:
     build:
@@ -50,9 +11,7 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ../src/mod_ui_original/html:/usr/share/nginx/html:ro  # Original web assets
-    depends_on:
-      - mod-api
+      - ../src/mod_ui/static:/usr/share/nginx/html:ro
     networks:
       - mod-network
 

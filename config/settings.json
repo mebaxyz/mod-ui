@@ -91,5 +91,11 @@
     "session_service_timeout": 10,
     "redis_host": "localhost",
     "redis_port": 6379
+  },
+  "test": {
+    "value": "hello"
+  },
+  "general": {
+    "cloud-terms-accepted": "true"
   }
 }

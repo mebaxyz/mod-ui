@@ -27,7 +27,7 @@ from src.mod_ui.services.webui_gateway.models import (
 )
 
 # Import API routers
-from src.mod_ui.services.webui_gateway.routers import broadcast
+from src.mod_ui.services.webui_gateway.routers import auth, broadcast
 from src.mod_ui.services.webui_gateway.routers import config as config_router
 from src.mod_ui.services.webui_gateway.routers import (
     connections,
@@ -35,6 +35,7 @@ from src.mod_ui.services.webui_gateway.routers import (
     health,
     legacy,
     session,
+    snapshots,
     system,
 )
 from src.mod_ui.services.webui_gateway.services.connection_manager import (
@@ -160,6 +161,7 @@ app.include_router(health.router, prefix="/api/health", tags=["health"])
 app.include_router(
     health.router, tags=["health"]
 )  # Also include at root level for /ping
+app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(system.router, prefix="/api/system", tags=["system"])
 app.include_router(connections.router, prefix="/api/connections", tags=["connections"])
 app.include_router(broadcast.router, prefix="/api/broadcast", tags=["broadcast"])
@@ -167,6 +169,7 @@ app.include_router(session.router, prefix="/api/session", tags=["session"])
 app.include_router(config_router.router, prefix="/api/config", tags=["config"])
 app.include_router(effects.router, prefix="/api", tags=["effects"])
 app.include_router(legacy.router, prefix="/api/legacy", tags=["legacy"])
+app.include_router(snapshots.router, tags=["snapshots"])
 
 
 # WebSocket endpoint and other endpoints will follow...
