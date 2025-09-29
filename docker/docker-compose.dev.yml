@@ -227,7 +227,7 @@ services:
     # No HTTP port needed for Redis pub/sub service
     volumes:
       # Remove src volume mount to avoid Redis import issues
-      # - ../src:/app/src
+      - ../src:/app/src
       - ../config:/app/config  # Configuration files
     environment:
       - REDIS_HOST=redis
@@ -256,6 +256,7 @@ services:
     volumes:
       - ../src:/app/src
       - ../libraries:/app/libraries
+      - ../utils:/app/utils  # Required for libmod_utils.so
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379

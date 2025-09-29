@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies including C++ compiler for building packages and ALSA
+# Install system dependencies including C++ compiler for building packages and audio libraries
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
@@ -14,6 +14,17 @@ RUN apt-get update && apt-get install -y \
     libasound2 \
     libjack-jackd2-dev \
     libjack-jackd2-0 \
+    liblilv-dev \
+    liblilv-0-0 \
+    libserd-dev \
+    libserd-0-0 \
+    libsord-dev \
+    libsord-0-0 \
+    libsratom-dev \
+    libsratom-0-0 \
+    libzix-dev \
+    libzix-0-0 \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements

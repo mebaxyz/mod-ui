@@ -18,8 +18,8 @@ from typing import Any, Dict, List, Optional, Set
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-
 from servicebus import CommConfig, ServiceClient, set_config
+
 from src.mod_ui.services.webui_gateway.models import (
     ClientConnection,
     EventSubscription,

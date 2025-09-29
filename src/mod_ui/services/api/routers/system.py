@@ -71,15 +71,14 @@ async def ping():
 
     Simple health check that returns success status and timestamp.
     Used by monitoring systems and load balancers.
+    Compatible with legacy JavaScript client expectations.
     """
     return JSONResponse(
         {
             "success": True,
-            "data": {
-                "ihm_online": True,
-                "ihm_time": 1,
-                "timestamp": datetime.now().isoformat(),
-            },
+            "ihm_online": True,
+            "ihm_time": 1,
+            "timestamp": datetime.now().isoformat(),
         }
     )
 

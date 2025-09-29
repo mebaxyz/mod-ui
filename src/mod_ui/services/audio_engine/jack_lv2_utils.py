@@ -22,32 +22,39 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
-# Try to import the mod utils if available (for production)
-try:
-    from mod_ui.utils.modtools.utils import (
-        add_bundle_to_lilv_world,
-        close_jack,
-        connect_jack_ports,
-        disconnect_all_jack_ports,
-        disconnect_jack_ports,
-        get_all_plugins,
-        get_jack_buffer_size,
-        get_jack_data,
-        get_jack_hardware_ports,
-        get_jack_sample_rate,
-        get_plugin_info,
-        get_plugin_list,
-        init_jack,
-        remove_bundle_from_lilv_world,
-        reset_xruns,
-        set_jack_buffer_size,
-    )
+# Global flag for MOD utilities availability
+HAVE_MOD_UTILS = False
+MOD_UTILS = None
 
-    HAVE_MOD_UTILS = True
-    logger.info("MOD utilities available - using native implementation")
-except ImportError:
-    logger.warning("MOD utilities not available - using fallback implementations")
-    HAVE_MOD_UTILS = False
+
+def _try_import_mod_utils():
+    """Try to import MOD utilities - called lazily when needed"""
+    global HAVE_MOD_UTILS, MOD_UTILS
+
+    if MOD_UTILS is not None:
+        return MOD_UTILS
+
+    try:
+        from mod_ui.utils.modtools import utils as mod_utils
+
+        MOD_UTILS = mod_utils
+        HAVE_MOD_UTILS = True
+        logger.info("MOD utilities available - using native implementation")
+        return MOD_UTILS
+    except Exception as e:
+        logger.warning(
+            f"MOD utilities not available - using fallback implementations: {e}"
+        )
+        HAVE_MOD_UTILS = False
+        MOD_UTILS = False  # Mark as attempted but failed
+        return None
+
+
+def _get_mod_utils():
+    """Get MOD utilities if available"""
+    if MOD_UTILS is None:
+        return _try_import_mod_utils()
+    return MOD_UTILS if MOD_UTILS is not False else None
 
 
 class JackManager:
@@ -60,8 +67,9 @@ class JackManager:
     def _try_init_jack(self) -> bool:
         """Try to initialize JACK"""
         try:
-            if HAVE_MOD_UTILS:
-                self.initialized = init_jack()
+            mod_utils = _get_mod_utils()
+            if mod_utils:
+                self.initialized = mod_utils.init_jack()
             else:
                 # Fallback: check if JACK is running by trying to connect to it
                 result = subprocess.run(
@@ -81,16 +89,17 @@ class JackManager:
             return JackData()
 
         try:
-            if HAVE_MOD_UTILS:
-                data = get_jack_data(with_transport)
+            mod_utils = _get_mod_utils()
+            if mod_utils:
+                data = mod_utils.get_jack_data(with_transport)
                 return JackData(
                     cpu_load=data.get("cpuLoad", 0.0),
                     xruns=data.get("xruns", 0),
                     rolling=data.get("rolling", False),
                     bpb=data.get("bpb", 4.0),
                     bpm=data.get("bpm", 120.0),
-                    buffer_size=get_jack_buffer_size(),
-                    sample_rate=get_jack_sample_rate(),
+                    buffer_size=mod_utils.get_jack_buffer_size(),
+                    sample_rate=mod_utils.get_jack_sample_rate(),
                 )
             else:
                 # Fallback implementation

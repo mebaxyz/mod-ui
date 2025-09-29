@@ -8,7 +8,6 @@ the Configuration Service via Redis pub/sub.
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException
-
 from servicebus import ServiceClient
 
 router = APIRouter()
@@ -46,15 +45,12 @@ async def get_all_settings() -> Dict[str, Any]:
     try:
         response = await config_service_client.call(
             target_service="config",
-            request_type="get_all_config",
+            request_type="GET_ALL_CONFIG",
             data={},
         )
 
         if response is not None:
-            return {
-                "ok": True,
-                **response,
-            }
+            return response
         else:
             raise HTTPException(
                 status_code=500,
@@ -74,16 +70,12 @@ async def get_settings_section(section: str) -> Dict[str, Any]:
     try:
         response = await config_service_client.call(
             target_service="config",
-            request_type="get_config_section",
+            request_type="GET_CONFIG_SECTION",
             data={"section": section},
         )
 
         if response is not None:
-            return {
-                "ok": True,
-                "section": section,
-                **response,
-            }
+            return response
         else:
             raise HTTPException(status_code=500, detail="Failed to get config section")
 
@@ -102,17 +94,12 @@ async def get_setting_by_key(section: str, key: str) -> Dict[str, Any]:
     try:
         response = await config_service_client.call(
             target_service="config",
-            request_type="get_config_value",
+            request_type="GET_CONFIG_VALUE",
             data={"section": section, "key": key},
         )
 
         if response is not None:
-            return {
-                "ok": True,
-                "section": section,
-                "key": key,
-                "value": response,
-            }
+            return response
         else:
             raise HTTPException(status_code=500, detail="Failed to get config value")
 

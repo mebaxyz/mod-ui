@@ -33,6 +33,10 @@ def safe_json_load(filepath: str, default_value):
                 return json.load(f)
     except Exception as e:
         logger.error(f"Error loading JSON from {filepath}: {e}")
+
+    # If default_value is a type (like dict, list), instantiate it
+    if isinstance(default_value, type):
+        return default_value()
     return default_value
 
 

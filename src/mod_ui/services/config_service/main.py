@@ -27,6 +27,51 @@ SETTINGS_JSON_PATH = (
 )
 
 
+def get_template_variables() -> Dict[str, Any]:
+    """Generate current template variables"""
+    import time
+
+    # Version variable
+    version_arg = "1"
+    try:
+        # Try to read version from MOD release file
+        version_file = "/etc/mod-release/release"
+        if os.path.exists(version_file):
+            with open(version_file, "r") as f:
+                image_version = f.read().strip()
+                if image_version and len(image_version) > 1:
+                    # Strip initial 'v' from version if present
+                    version_arg = (
+                        image_version[1:] if image_version[0] == "v" else image_version
+                    )
+                else:
+                    version_arg = str(int(time.time()))
+        else:
+            # Use timestamp as fallback
+            version_arg = str(int(time.time()))
+    except Exception as e:
+        logging.error(f"Error reading version: {e}")
+        version_arg = str(int(time.time()))
+
+    # Desktop mode variable
+    desktop_mode = bool(int(os.environ.get("MOD_DESKTOP", "0")))
+
+    return {
+        "version": version_arg,
+        "using_desktop": "true" if desktop_mode else "false",
+        "cloud_url": "https://cloud.moddevices.com",
+        "cloud_labs_url": "https://cloud.moddevices.com/labs",
+        "plugins_url": "https://cloud.moddevices.com/plugins",
+        "pedalboards_url": "https://cloud.moddevices.com/pedalboards",
+        "pedalboards_labs_url": "https://cloud.moddevices.com/labs/pedalboards",
+        "controlchain_url": "https://wiki.moddevices.com/wiki/Control_Chain",
+        "using_mod": "false",  # Will be determined by hardware detection later
+        "dev_api_class": (
+            "dev_api" if os.environ.get("DEV_API", "").lower() == "true" else ""
+        ),
+    }
+
+
 def load_settings() -> Dict[str, Any]:
     """Load settings from JSON file"""
     global settings_cache
@@ -141,7 +186,7 @@ async def shutdown_services():
 
 
 # ServiceServer request handlers for Redis pub/sub communication
-async def handle_get_all_config(request) -> dict:
+async def handle_get_all_config(data) -> dict:
     """Handler for getting all configuration settings"""
     try:
         settings = load_settings()
@@ -150,10 +195,9 @@ async def handle_get_all_config(request) -> dict:
         return {"success": False, "error": str(e)}
 
 
-async def handle_get_config_section(request) -> dict:
+async def handle_get_config_section(data) -> dict:
     """Handler for getting a specific configuration section"""
     try:
-        data = request.data
         section = data.get("section")
 
         if not section:
@@ -169,10 +213,9 @@ async def handle_get_config_section(request) -> dict:
         return {"success": False, "error": str(e)}
 
 
-async def handle_get_config_value(request) -> dict:
+async def handle_get_config_value(data) -> dict:
     """Handler for getting a specific configuration value"""
     try:
-        data = request.data
         section = data.get("section")
         key = data.get("key")
 
@@ -201,10 +244,9 @@ async def handle_get_config_value(request) -> dict:
         return {"success": False, "error": str(e)}
 
 
-async def handle_set_config_value(request) -> dict:
+async def handle_set_config_value(data) -> dict:
     """Handler for setting a configuration value"""
     try:
-        data = request.data
         section = data.get("section")
         key = data.get("key")
         value = data.get("value")
@@ -237,7 +279,7 @@ async def handle_set_config_value(request) -> dict:
         return {"success": False, "error": str(e)}
 
 
-async def handle_reload_config(request) -> dict:
+async def handle_reload_config(data) -> dict:
     """Handler for reloading configuration from file"""
     global settings_cache
     try:
