@@ -10,7 +10,6 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException, Path, Query, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-
 from servicebus import CommConfig, ServiceClient, set_config
 
 

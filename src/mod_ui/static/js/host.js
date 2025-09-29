@@ -616,15 +616,15 @@ $("document").ready(function () {
 
       console.log("DEBUG: desktop object:", typeof desktop, desktop);
       console.log("DEBUG: desktop.init function:", typeof desktop.init);
-      
+
       // CRITICAL: Call desktop.init() to show the desktop UI elements
-      if (desktop && typeof desktop.init === 'function') {
+      if (desktop && typeof desktop.init === "function") {
         console.log("DEBUG: Calling desktop.init()");
         desktop.init();
       } else {
         console.error("DEBUG: desktop.init is not available!");
       }
-      
+
       var snapshotId = parseInt(data);
 
       $.ajax({
