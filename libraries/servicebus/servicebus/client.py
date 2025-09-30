@@ -7,7 +7,7 @@ import json
 import time
 import uuid
 from contextlib import asynccontextmanager
-from typing import Any, Callable, Dict, Generic, List, Optional, Type, TypeVar
+from typing import Any, Dict, Generic, List, Optional, Type, TypeVar
 
 import redis.asyncio as redis
 
@@ -166,8 +166,9 @@ class ServiceClient:
                     if message["type"] == "message":
                         response_data = json.loads(message["data"])
                         return ServiceResponse.parse_obj(response_data)
-        except asyncio.TimeoutError:
-            raise TimeoutError(f"Request timed out after {timeout} seconds")
+        except asyncio.TimeoutError as exc:
+            # Preserve original exception context
+            raise TimeoutError(f"Request timed out after {timeout} seconds") from exc
         finally:
             await pubsub.unsubscribe(response_channel)
             await pubsub.close()
@@ -185,8 +186,7 @@ class ServiceClient:
             response, expiry_time = self._cached_responses[cache_key]
             if time.time() < expiry_time:
                 return response
-            else:
-                del self._cached_responses[cache_key]
+            del self._cached_responses[cache_key]
         return None
 
     def _cache_response(self, cache_key: str, response: Any) -> None:

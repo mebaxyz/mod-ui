@@ -212,7 +212,8 @@ class TestEventRouter:
 
         # Verify initial status was sent
         connection_manager.send_to_client.assert_called_once_with(
-            "test_client", pytest.any(dict)  # Initial status message
+            "test_client",
+            pytest.any(dict),  # Initial status message
         )
 
     @pytest.mark.asyncio

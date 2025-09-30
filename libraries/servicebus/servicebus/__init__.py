@@ -7,6 +7,9 @@ with automatic service discovery, event broadcasting, and performance optimizati
 Originally forked from MOD-UI project, enhanced and modified by Nicolas.
 """
 
+import os
+
+# Import both implementations
 from .client import ServiceClient, TypedServiceClient, service_client
 from .config import CommConfig, get_config, get_redis_url_from_env, set_config
 from .discovery import ServiceDiscovery, ServiceLoadBalancer
@@ -24,15 +27,37 @@ from .models import (
 )
 from .resilient import ResilientServiceBus, create_resilient_service
 from .server import ServiceServer, ServiceServerBuilder, event_handler, handler
-from .service import Service, create_service, temporary_service
+from .service import Service as RedisService
+from .service import create_service as create_redis_service
+from .service import temporary_service
+from .zeromq_service import ZeroMQService
+from .zeromq_service import create_service as create_zeromq_service
+
+# Default to ZeroMQ implementation (no Redis dependency)
+SERVICEBUS_IMPL = os.getenv("SERVICEBUS_IMPL", "zeromq").lower()
+
+if SERVICEBUS_IMPL == "redis":
+    # Use Redis implementation
+    Service = RedisService
+    create_service = create_redis_service
+else:
+    # Use ZeroMQ implementation (default)
+    Service = ZeroMQService
+    create_service = create_zeromq_service
 
 __version__ = "0.1.0"
 __all__ = [
-    # Unified service class (recommended)
+    # Unified service class (recommended - defaults to ZeroMQ)
     "Service",
     "create_service",
     "temporary_service",
-    # Resilient service class (auto-reconnecting, recommended for production)
+    # ZeroMQ implementation (lightweight, no broker required)
+    "ZeroMQService",
+    "create_zeromq_service",
+    # Redis implementations (requires Redis server)
+    "RedisService",
+    "create_redis_service",
+    # Resilient service class (auto-reconnecting, for Redis)
     "ResilientServiceBus",
     "create_resilient_service",
     # Gateway service class (for HTTP/WebSocket gateways)

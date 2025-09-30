@@ -756,7 +756,7 @@ class StateManagerService:
 <{bundle_path}>
     a mod:Pedalboard ;
     lv2:name "{pedalboard.metadata.title}" ;
-    rdfs:comment "{pedalboard.metadata.description or ''}" .
+    rdfs:comment "{pedalboard.metadata.description or ""}" .
 """
             )
 

@@ -340,7 +340,7 @@ class AudioEngineService:
                             instance=f"/graph/{port_name}",
                             port_type="midi",
                             is_output=False,
-                            display_name=f"MIDI_In_{i+1}",
+                            display_name=f"MIDI_In_{i + 1}",
                             index=i,
                             jack_port_name=port_info.name,
                         )
@@ -358,7 +358,7 @@ class AudioEngineService:
                             instance=f"/graph/{port_name}",
                             port_type="midi",
                             is_output=True,
-                            display_name=f"MIDI_Out_{i+1}",
+                            display_name=f"MIDI_Out_{i + 1}",
                             index=i,
                             jack_port_name=port_info.name,
                         )

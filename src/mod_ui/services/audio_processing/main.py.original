@@ -1,0 +1,803 @@
+"""
+MOD UI - Audio Processing Service
+
+Consolidated service handling audio engine management, plugin management, session management, and mod-host bridge.
+This service consolidates the audio_engine, plugin_manager, session_service, and provides mod-host integration.
+"""
+
+import asyncio
+import json
+import logging
+import os
+import signal
+import subprocess
+import sys
+import uuid
+from dataclasses import asdict, dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
+
+from servicebus import Service
+
+# Configuration
+SERVICE_NAME = "audio_processing"
+SERVICE_PORT = int(os.getenv("AUDIO_PROCESSING_PORT", "8082"))
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+
+# mod-host configuration
+MOD_HOST_PATH = os.path.join(os.path.dirname(__file__), "../mod-host/mod-host")
+MOD_HOST_PORT = 5555
+JACK_SAMPLE_RATE = 48000
+JACK_BUFFER_SIZE = 256
+
+# Logging configuration
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+# Data models
+@dataclass
+class Plugin:
+    uri: str
+    instance_id: str
+    name: str
+    brand: str
+    version: str
+    parameters: Dict[str, Any]
+    ports: Dict[str, Any]
+    x: float = 0.0
+    y: float = 0.0
+    enabled: bool = True
+    preset: Optional[str] = None
+
+
+@dataclass
+class Connection:
+    source_plugin: str
+    source_port: str
+    target_plugin: str
+    target_port: str
+    connection_id: str = None
+
+    def __post_init__(self):
+        if not self.connection_id:
+            self.connection_id = str(uuid.uuid4())
+
+
+@dataclass
+class Pedalboard:
+    id: str
+    name: str
+    description: str
+    plugins: List[Plugin]
+    connections: List[Connection]
+    created_at: datetime
+    modified_at: datetime
+    metadata: Dict[str, Any]
+
+
+# Request/Response Models
+class PluginRequest(BaseModel):
+    uri: str
+    x: float
+    y: float
+    parameters: Optional[Dict[str, float]] = None
+
+
+class ParameterUpdate(BaseModel):
+    plugin_instance: str
+    parameter: str
+    value: float
+
+
+class ConnectionRequest(BaseModel):
+    source_plugin: str
+    source_port: str
+    target_plugin: str
+    target_port: str
+
+
+class PedalboardRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    plugins: List[Dict[str, Any]] = []
+
+
+class SessionState(BaseModel):
+    current_pedalboard: Optional[str] = None
+    transport_state: str = "stopped"
+    tempo: float = 120.0
+    time_signature: str = "4/4"
+    recording: bool = False
+
+
+# Global state
+current_pedalboard: Optional[Pedalboard] = None
+current_session: SessionState = SessionState()
+mod_host_process: Optional[subprocess.Popen] = None
+plugin_instances: Dict[str, Plugin] = {}
+active_connections: List[Connection] = []
+available_plugins: Dict[str, Dict[str, Any]] = {}
+
+# Global instances
+service_bus: Optional[ResilientServiceBus] = None
+
+
+class ModHostBridge:
+    """Bridge to communicate with mod-host process"""
+
+    def __init__(self, port: int = MOD_HOST_PORT):
+        self.port = port
+        self.process = None
+        self.socket = None
+
+    async def start(self):
+        """Start mod-host process"""
+        try:
+            if not os.path.exists(MOD_HOST_PATH):
+                logger.error(f"mod-host binary not found at {MOD_HOST_PATH}")
+                return False
+
+            # Start mod-host process
+            cmd = [
+                MOD_HOST_PATH,
+                "-p",
+                str(self.port),
+                "-f",
+                str(JACK_SAMPLE_RATE),
+                "-b",
+                str(JACK_BUFFER_SIZE),
+            ]
+
+            self.process = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            )
+
+            # Wait a moment for startup
+            await asyncio.sleep(2)
+
+            if self.process.poll() is None:
+                logger.info(f"mod-host started successfully on port {self.port}")
+                return True
+            else:
+                logger.error("mod-host failed to start")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error starting mod-host: {e}")
+            return False
+
+    async def stop(self):
+        """Stop mod-host process"""
+        if self.process:
+            try:
+                self.process.terminate()
+                await asyncio.sleep(1)
+                if self.process.poll() is None:
+                    self.process.kill()
+                logger.info("mod-host stopped")
+            except Exception as e:
+                logger.error(f"Error stopping mod-host: {e}")
+
+    async def send_command(self, command: str) -> Optional[str]:
+        """Send command to mod-host"""
+        try:
+            import socket
+
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(5.0)
+                sock.connect(("localhost", self.port))
+                sock.send(f"{command}\n".encode())
+
+                response = sock.recv(1024).decode().strip()
+                return response
+
+        except Exception as e:
+            logger.error(f"Error sending command to mod-host: {e}")
+            return None
+
+    async def add_plugin(self, plugin_uri: str, instance_id: str) -> bool:
+        """Add plugin to mod-host"""
+        command = f"add {plugin_uri} {instance_id}"
+        response = await self.send_command(command)
+        return response == "resp 0" if response else False
+
+    async def remove_plugin(self, instance_id: str) -> bool:
+        """Remove plugin from mod-host"""
+        command = f"remove {instance_id}"
+        response = await self.send_command(command)
+        return response == "resp 0" if response else False
+
+    async def connect_ports(self, source: str, target: str) -> bool:
+        """Connect audio ports"""
+        command = f"connect {source} {target}"
+        response = await self.send_command(command)
+        return response == "resp 0" if response else False
+
+    async def disconnect_ports(self, source: str, target: str) -> bool:
+        """Disconnect audio ports"""
+        command = f"disconnect {source} {target}"
+        response = await self.send_command(command)
+        return response == "resp 0" if response else False
+
+    async def set_parameter(
+        self, instance_id: str, parameter: str, value: float
+    ) -> bool:
+        """Set plugin parameter"""
+        command = f"param_set {instance_id} {parameter} {value}"
+        response = await self.send_command(command)
+        return response == "resp 0" if response else False
+
+    async def get_parameter(self, instance_id: str, parameter: str) -> Optional[float]:
+        """Get plugin parameter value"""
+        command = f"param_get {instance_id} {parameter}"
+        response = await self.send_command(command)
+        if response and response.startswith("resp "):
+            try:
+                return float(response.split()[1])
+            except (IndexError, ValueError):
+                pass
+        return None
+
+
+# Global mod-host bridge
+mod_host = ModHostBridge()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager"""
+    global service_bus, available_plugins
+
+    # Startup
+    logger.info(f"Starting {SERVICE_NAME} service on port {SERVICE_PORT}")
+
+    # Initialize service bus
+    service_bus = ResilientServiceBus(SERVICE_NAME, REDIS_URL)
+    await service_bus.start()
+
+    # Register service endpoints
+    await service_bus.register_service(SERVICE_NAME, f"http://localhost:{SERVICE_PORT}")
+
+    # Start mod-host
+    await mod_host.start()
+
+    # Load available plugins
+    available_plugins = await load_available_plugins()
+
+    # Start background tasks
+    asyncio.create_task(audio_monitor())
+
+    logger.info(f"{SERVICE_NAME} service started successfully")
+
+    yield
+
+    # Shutdown
+    logger.info(f"Shutting down {SERVICE_NAME} service")
+    await mod_host.stop()
+    if service_bus:
+        await service_bus.stop()
+
+
+# Create FastAPI app
+app = FastAPI(
+    title="MOD UI - Audio Processing Service",
+    description="Handles audio engine, plugin management, session management, and mod-host integration",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    mod_host_status = (
+        "running" if mod_host.process and mod_host.process.poll() is None else "stopped"
+    )
+
+    return ServiceHealth(
+        service=SERVICE_NAME,
+        status=ServiceStatus.HEALTHY,
+        details={
+            "mod_host_status": mod_host_status,
+            "active_plugins": len(plugin_instances),
+            "active_connections": len(active_connections),
+            "current_pedalboard": (
+                current_pedalboard.name if current_pedalboard else None
+            ),
+            "service_bus_connected": (
+                service_bus.is_connected() if service_bus else False
+            ),
+        },
+    )
+
+
+# Plugin Management
+@app.get("/api/plugins/available")
+async def get_available_plugins():
+    """Get list of available plugins"""
+    return {"plugins": available_plugins}
+
+
+@app.post("/api/plugins")
+async def add_plugin(plugin_req: PluginRequest):
+    """Add plugin to current pedalboard"""
+    global current_pedalboard
+
+    try:
+        # Generate instance ID
+        instance_id = f"plugin_{len(plugin_instances)}"
+
+        # Check if plugin URI exists in available plugins
+        if plugin_req.uri not in available_plugins:
+            raise HTTPException(status_code=404, detail="Plugin not found")
+
+        plugin_info = available_plugins[plugin_req.uri]
+
+        # Create plugin instance
+        plugin = Plugin(
+            uri=plugin_req.uri,
+            instance_id=instance_id,
+            name=plugin_info.get("name", "Unknown"),
+            brand=plugin_info.get("brand", "Unknown"),
+            version=plugin_info.get("version", "1.0"),
+            parameters=plugin_req.parameters or {},
+            ports=plugin_info.get("ports", {}),
+            x=plugin_req.x,
+            y=plugin_req.y,
+        )
+
+        # Add to mod-host
+        success = await mod_host.add_plugin(plugin_req.uri, instance_id)
+        if not success:
+            raise HTTPException(
+                status_code=500, detail="Failed to add plugin to audio engine"
+            )
+
+        # Set initial parameters
+        if plugin_req.parameters:
+            for param, value in plugin_req.parameters.items():
+                await mod_host.set_parameter(instance_id, param, value)
+
+        # Store plugin instance
+        plugin_instances[instance_id] = plugin
+
+        # Add to current pedalboard if exists
+        if current_pedalboard:
+            current_pedalboard.plugins.append(plugin)
+            current_pedalboard.modified_at = datetime.now()
+
+        logger.info(f"Added plugin {plugin_req.uri} as {instance_id}")
+
+        return {
+            "instance_id": instance_id,
+            "plugin": asdict(plugin),
+            "message": "Plugin added successfully",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding plugin: {e}")
+        raise HTTPException(status_code=500, detail="Failed to add plugin")
+
+
+@app.delete("/api/plugins/{instance_id}")
+async def remove_plugin(instance_id: str):
+    """Remove plugin from current pedalboard"""
+    global current_pedalboard
+
+    try:
+        if instance_id not in plugin_instances:
+            raise HTTPException(status_code=404, detail="Plugin instance not found")
+
+        # Remove connections involving this plugin
+        connections_to_remove = [
+            conn
+            for conn in active_connections
+            if conn.source_plugin == instance_id or conn.target_plugin == instance_id
+        ]
+
+        for conn in connections_to_remove:
+            await disconnect_ports(conn)
+
+        # Remove from mod-host
+        success = await mod_host.remove_plugin(instance_id)
+        if not success:
+            logger.warning(f"Failed to remove plugin {instance_id} from mod-host")
+
+        # Remove from plugin instances
+        plugin = plugin_instances.pop(instance_id)
+
+        # Remove from current pedalboard
+        if current_pedalboard:
+            current_pedalboard.plugins = [
+                p for p in current_pedalboard.plugins if p.instance_id != instance_id
+            ]
+            current_pedalboard.modified_at = datetime.now()
+
+        logger.info(f"Removed plugin {instance_id}")
+
+        return {"message": f"Plugin {instance_id} removed successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error removing plugin: {e}")
+        raise HTTPException(status_code=500, detail="Failed to remove plugin")
+
+
+@app.get("/api/plugins/{instance_id}")
+async def get_plugin(instance_id: str):
+    """Get plugin information"""
+    if instance_id not in plugin_instances:
+        raise HTTPException(status_code=404, detail="Plugin instance not found")
+
+    plugin = plugin_instances[instance_id]
+    return {"plugin": asdict(plugin)}
+
+
+# Parameter Management
+@app.put("/api/parameters")
+async def update_parameter(param_update: ParameterUpdate):
+    """Update plugin parameter"""
+    try:
+        if param_update.plugin_instance not in plugin_instances:
+            raise HTTPException(status_code=404, detail="Plugin instance not found")
+
+        # Update in mod-host
+        success = await mod_host.set_parameter(
+            param_update.plugin_instance, param_update.parameter, param_update.value
+        )
+
+        if not success:
+            raise HTTPException(
+                status_code=500, detail="Failed to update parameter in audio engine"
+            )
+
+        # Update stored parameter
+        plugin = plugin_instances[param_update.plugin_instance]
+        plugin.parameters[param_update.parameter] = param_update.value
+
+        # Update pedalboard modified time
+        if current_pedalboard:
+            current_pedalboard.modified_at = datetime.now()
+
+        logger.info(
+            f"Updated parameter {param_update.parameter} = {param_update.value} for {param_update.plugin_instance}"
+        )
+
+        return {"message": "Parameter updated successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating parameter: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update parameter")
+
+
+@app.get("/api/parameters/{instance_id}/{parameter}")
+async def get_parameter(instance_id: str, parameter: str):
+    """Get current parameter value"""
+    try:
+        if instance_id not in plugin_instances:
+            raise HTTPException(status_code=404, detail="Plugin instance not found")
+
+        # Get from mod-host
+        value = await mod_host.get_parameter(instance_id, parameter)
+
+        if value is None:
+            # Fallback to stored value
+            plugin = plugin_instances[instance_id]
+            value = plugin.parameters.get(parameter)
+
+        return {"parameter": parameter, "value": value}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting parameter: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get parameter")
+
+
+# Connection Management
+@app.post("/api/connections")
+async def create_connection(conn_req: ConnectionRequest):
+    """Create audio connection between plugins"""
+    try:
+        # Validate plugins exist
+        if conn_req.source_plugin not in plugin_instances:
+            raise HTTPException(status_code=404, detail="Source plugin not found")
+        if conn_req.target_plugin not in plugin_instances:
+            raise HTTPException(status_code=404, detail="Target plugin not found")
+
+        # Create connection
+        connection = Connection(
+            source_plugin=conn_req.source_plugin,
+            source_port=conn_req.source_port,
+            target_plugin=conn_req.target_plugin,
+            target_port=conn_req.target_port,
+        )
+
+        # Connect in mod-host
+        success = await mod_host.connect_ports(
+            f"{conn_req.source_plugin}:{conn_req.source_port}",
+            f"{conn_req.target_plugin}:{conn_req.target_port}",
+        )
+
+        if not success:
+            raise HTTPException(
+                status_code=500, detail="Failed to create connection in audio engine"
+            )
+
+        # Store connection
+        active_connections.append(connection)
+
+        # Add to current pedalboard
+        if current_pedalboard:
+            current_pedalboard.connections.append(connection)
+            current_pedalboard.modified_at = datetime.now()
+
+        logger.info(
+            f"Created connection: {conn_req.source_plugin}:{conn_req.source_port} -> {conn_req.target_plugin}:{conn_req.target_port}"
+        )
+
+        return {
+            "connection_id": connection.connection_id,
+            "connection": asdict(connection),
+            "message": "Connection created successfully",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating connection: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create connection")
+
+
+@app.delete("/api/connections/{connection_id}")
+async def remove_connection(connection_id: str):
+    """Remove audio connection"""
+    try:
+        # Find connection
+        connection = None
+        for conn in active_connections:
+            if conn.connection_id == connection_id:
+                connection = conn
+                break
+
+        if not connection:
+            raise HTTPException(status_code=404, detail="Connection not found")
+
+        # Disconnect in mod-host
+        await disconnect_ports(connection)
+
+        # Remove from active connections
+        active_connections.remove(connection)
+
+        # Remove from current pedalboard
+        if current_pedalboard:
+            current_pedalboard.connections = [
+                c
+                for c in current_pedalboard.connections
+                if c.connection_id != connection_id
+            ]
+            current_pedalboard.modified_at = datetime.now()
+
+        logger.info(f"Removed connection {connection_id}")
+
+        return {"message": "Connection removed successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error removing connection: {e}")
+        raise HTTPException(status_code=500, detail="Failed to remove connection")
+
+
+# Pedalboard Management
+@app.post("/api/pedalboards")
+async def create_pedalboard(pedalboard_req: PedalboardRequest):
+    """Create new pedalboard"""
+    global current_pedalboard
+
+    try:
+        pedalboard_id = str(uuid.uuid4())
+
+        pedalboard = Pedalboard(
+            id=pedalboard_id,
+            name=pedalboard_req.name,
+            description=pedalboard_req.description or "",
+            plugins=[],
+            connections=[],
+            created_at=datetime.now(),
+            modified_at=datetime.now(),
+            metadata={},
+        )
+
+        current_pedalboard = pedalboard
+
+        # Clear current audio state
+        await clear_audio_state()
+
+        logger.info(f"Created pedalboard: {pedalboard_req.name}")
+
+        return {
+            "pedalboard_id": pedalboard_id,
+            "pedalboard": asdict(pedalboard),
+            "message": "Pedalboard created successfully",
+        }
+
+    except Exception as e:
+        logger.error(f"Error creating pedalboard: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create pedalboard")
+
+
+@app.get("/api/pedalboards/current")
+async def get_current_pedalboard():
+    """Get current active pedalboard"""
+    if not current_pedalboard:
+        return {"pedalboard": None}
+
+    return {"pedalboard": asdict(current_pedalboard)}
+
+
+@app.put("/api/pedalboards/{pedalboard_id}")
+async def update_pedalboard(pedalboard_id: str, pedalboard_req: PedalboardRequest):
+    """Update pedalboard"""
+    global current_pedalboard
+
+    try:
+        if not current_pedalboard or current_pedalboard.id != pedalboard_id:
+            raise HTTPException(status_code=404, detail="Pedalboard not found")
+
+        # Update basic info
+        current_pedalboard.name = pedalboard_req.name
+        current_pedalboard.description = pedalboard_req.description or ""
+        current_pedalboard.modified_at = datetime.now()
+
+        logger.info(f"Updated pedalboard: {pedalboard_req.name}")
+
+        return {
+            "pedalboard": asdict(current_pedalboard),
+            "message": "Pedalboard updated successfully",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating pedalboard: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update pedalboard")
+
+
+# Session Management
+@app.get("/api/session")
+async def get_session_state():
+    """Get current session state"""
+    return {"session": current_session.dict()}
+
+
+@app.put("/api/session/transport/{action}")
+async def transport_control(action: str):
+    """Control transport (play, stop, pause)"""
+    global current_session
+
+    try:
+        if action in ["play", "stop", "pause"]:
+            current_session.transport_state = action
+
+            # Send to mod-host if needed
+            if action == "play":
+                # Start audio processing
+                pass
+            elif action == "stop":
+                # Stop audio processing
+                pass
+
+            logger.info(f"Transport action: {action}")
+
+            return {"message": f"Transport {action} successful"}
+        else:
+            raise HTTPException(status_code=400, detail="Invalid transport action")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in transport control: {e}")
+        raise HTTPException(status_code=500, detail="Transport control failed")
+
+
+# Utility functions
+async def load_available_plugins() -> Dict[str, Dict[str, Any]]:
+    """Load available LV2 plugins"""
+    # This would typically scan the LV2 plugin directories
+    # For now, return a mock list
+    return {
+        "http://guitarix.sourceforge.net/plugins/gx_distortion": {
+            "name": "GX Distortion",
+            "brand": "Guitarix",
+            "version": "1.0",
+            "category": "Distortion",
+            "ports": {
+                "input": {"type": "audio", "direction": "input"},
+                "output": {"type": "audio", "direction": "output"},
+                "drive": {"type": "control", "min": 0.0, "max": 1.0, "default": 0.5},
+            },
+        },
+        "http://guitarix.sourceforge.net/plugins/gx_reverb": {
+            "name": "GX Reverb",
+            "brand": "Guitarix",
+            "version": "1.0",
+            "category": "Reverb",
+            "ports": {
+                "input": {"type": "audio", "direction": "input"},
+                "output": {"type": "audio", "direction": "output"},
+                "roomsize": {"type": "control", "min": 0.0, "max": 1.0, "default": 0.5},
+                "wet": {"type": "control", "min": 0.0, "max": 1.0, "default": 0.3},
+            },
+        },
+    }
+
+
+async def disconnect_ports(connection: Connection):
+    """Disconnect audio ports"""
+    success = await mod_host.disconnect_ports(
+        f"{connection.source_plugin}:{connection.source_port}",
+        f"{connection.target_plugin}:{connection.target_port}",
+    )
+    return success
+
+
+async def clear_audio_state():
+    """Clear all plugins and connections"""
+    global plugin_instances, active_connections
+
+    # Remove all connections
+    for conn in active_connections[:]:
+        await disconnect_ports(conn)
+    active_connections.clear()
+
+    # Remove all plugins
+    for instance_id in list(plugin_instances.keys()):
+        await mod_host.remove_plugin(instance_id)
+    plugin_instances.clear()
+
+
+# Background tasks
+async def audio_monitor():
+    """Monitor audio engine status"""
+    while True:
+        try:
+            await asyncio.sleep(10)  # Every 10 seconds
+
+            if service_bus:
+                # Check mod-host status
+                mod_host_alive = mod_host.process and mod_host.process.poll() is None
+
+                if not mod_host_alive:
+                    logger.warning("mod-host process not running, attempting restart")
+                    await mod_host.start()
+
+                # Publish audio status
+                await service_bus.publish(
+                    "audio_status_update",
+                    {
+                        "mod_host_status": "running" if mod_host_alive else "stopped",
+                        "active_plugins": len(plugin_instances),
+                        "active_connections": len(active_connections),
+                        "current_pedalboard": (
+                            current_pedalboard.name if current_pedalboard else None
+                        ),
+                    },
+                )
+
+        except Exception as e:
+            logger.error(f"Error in audio monitor: {e}")
+
+
+if __name__ == "__main__":
+    uvicorn.run(
+        "main:app", host="0.0.0.0", port=SERVICE_PORT, reload=False, log_level="info"
+    )

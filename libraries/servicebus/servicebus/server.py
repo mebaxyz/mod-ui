@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
 
 import redis.asyncio as redis
@@ -23,6 +23,8 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+# Local pragmatic disables for quick fixes
+# pylint: disable=redefined-outer-name
 
 
 class ServiceServer:
@@ -90,7 +92,9 @@ class ServiceServer:
         self._capabilities.append(capability)
 
         logger.info(
-            f"Registered handler for '{request_type}' in service '{self.service_name}'"
+            "Registered handler for '%s' in service '%s'",
+            request_type,
+            self.service_name,
         )
 
     def register_event_handler(
@@ -102,12 +106,14 @@ class ServiceServer:
         self._event_handlers[event_type].append(handler)
 
         logger.info(
-            f"Registered event handler for '{event_type}' in service '{self.service_name}'"
+            "Registered event handler for '%s' in service '%s'",
+            event_type,
+            self.service_name,
         )
 
     async def start(self) -> None:
         """Start the service server"""
-        logger.info(f"Starting service server '{self.service_name}'...")
+        logger.info("Starting service server '%s'...", self.service_name)
 
         # Register built-in handlers
         await self._register_builtin_handlers()
@@ -179,7 +185,7 @@ class ServiceServer:
             registry_key, self.config.service_registry_ttl, registration.json()
         )
 
-        logger.info(f"Registered service '{self.service_name}' in discovery")
+        logger.info("Registered service '%s' in discovery", self.service_name)
 
     async def _listen_for_requests(self) -> None:
         """Listen for incoming requests - optimized version"""
@@ -190,7 +196,9 @@ class ServiceServer:
         await pubsub.subscribe(request_channel)
 
         logger.info(
-            f"Service '{self.service_name}' listening for requests on '{request_channel}'"
+            "Service '%s' listening for requests on '%s'",
+            self.service_name,
+            request_channel,
         )
 
         try:
@@ -205,10 +213,10 @@ class ServiceServer:
                         asyncio.create_task(self._handle_request(request))
 
                     except Exception as e:
-                        logger.error(f"Error processing request: {e}")
+                        logger.error("Error processing request: %s", e)
 
         except Exception as e:
-            logger.error(f"Error in request listener: {e}")
+            logger.error("Error in request listener: %s", e)
         finally:
             await pubsub.unsubscribe(request_channel)
             await pubsub.close()
@@ -245,7 +253,7 @@ class ServiceServer:
 
         except Exception as e:
             self._error_count += 1
-            logger.error(f"Error handling request {request.request_id}: {e}")
+            logger.error("Error handling request %s: %s", request.request_id, e)
             response = ServiceResponse(
                 request_id=request.request_id,
                 correlation_id=request.correlation_id,
@@ -262,8 +270,11 @@ class ServiceServer:
         elapsed = time.time() - start_time
         if self.config.debug_mode:
             logger.info(
-                f"Request {request.request_type} from {request.source_service} "
-                f"completed in {elapsed:.3f}s (success: {response.success})"
+                "Request %s from %s completed in %.3fs (success: %s)",
+                request.request_type,
+                request.source_service,
+                elapsed,
+                response.success,
             )
 
     async def _send_response(
@@ -299,7 +310,7 @@ class ServiceServer:
                 await asyncio.sleep(self.config.service_registry_ttl / 2)
 
             except Exception as e:
-                logger.error(f"Error in health reporting: {e}")
+                logger.error("Error in health reporting: %s", e)
                 await asyncio.sleep(5)
 
     async def _event_listening_task(self) -> None:
@@ -311,7 +322,7 @@ class ServiceServer:
         pubsub = redis_client.pubsub()
 
         # Subscribe to all event types we handle
-        for event_type in self._event_handlers.keys():
+        for event_type in self._event_handlers:
             await pubsub.subscribe(f"events:{event_type}")
 
         try:
@@ -325,10 +336,10 @@ class ServiceServer:
                         asyncio.create_task(self._handle_event(event))
 
                     except Exception as e:
-                        logger.error(f"Error processing event: {e}")
+                        logger.error("Error processing event: %s", e)
 
         except Exception as e:
-            logger.error(f"Error in event listener: {e}")
+            logger.error("Error in event listener: %s", e)
         finally:
             await pubsub.close()
 
@@ -339,25 +350,27 @@ class ServiceServer:
                 try:
                     await handler(event)
                 except Exception as e:
-                    logger.error(f"Error in event handler for {event.event_type}: {e}")
+                    logger.error(
+                        "Error in event handler for %s: %s", event.event_type, e
+                    )
 
     # Built-in handlers
 
-    async def _handle_health_check(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_health_check(self, _data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle health check request"""
         return self._health_status.dict()
 
-    async def _handle_get_capabilities(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_get_capabilities(self, _data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle capabilities request"""
         return {"capabilities": [cap.dict() for cap in self._capabilities]}
 
-    async def _handle_ping(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_ping(self, _data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle ping request"""
         return {"pong": True, "timestamp": datetime.utcnow().isoformat()}
 
     async def stop(self) -> None:
         """Stop the service server"""
-        logger.info(f"Stopping service server '{self.service_name}'...")
+        logger.info("Stopping service server '%s'...", self.service_name)
 
         self._is_running = False
 
@@ -387,7 +400,7 @@ class ServiceServer:
         if self._connection_pool:
             await self._connection_pool.disconnect()
 
-        logger.info(f"Service server '{self.service_name}' stopped")
+        logger.info("Service server '%s' stopped", self.service_name)
 
 
 # Decorator for easier handler registration

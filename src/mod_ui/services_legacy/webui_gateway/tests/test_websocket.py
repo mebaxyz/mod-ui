@@ -32,14 +32,16 @@ class TestWebSocketFunctionality:
     @pytest.mark.asyncio
     async def test_websocket_connection_success(self, mock_services):
         """Test successful WebSocket connection"""
-        with patch(
-            "mod_ui.services.websocket_gateway.main.connection_manager",
-            mock_services["connection_manager"],
-        ), patch(
-            "mod_ui.services.websocket_gateway.main.event_router",
-            mock_services["event_router"],
+        with (
+            patch(
+                "mod_ui.services.websocket_gateway.main.connection_manager",
+                mock_services["connection_manager"],
+            ),
+            patch(
+                "mod_ui.services.websocket_gateway.main.event_router",
+                mock_services["event_router"],
+            ),
         ):
-
             # Mock WebSocket
             mock_websocket = Mock(spec=WebSocket)
             mock_websocket.accept = AsyncMock()
@@ -74,10 +76,10 @@ class TestWebSocketFunctionality:
     @pytest.mark.asyncio
     async def test_websocket_services_unavailable(self):
         """Test WebSocket connection when services are unavailable"""
-        with patch(
-            "mod_ui.services.websocket_gateway.main.connection_manager", None
-        ), patch("mod_ui.services.websocket_gateway.main.event_router", None):
-
+        with (
+            patch("mod_ui.services.websocket_gateway.main.connection_manager", None),
+            patch("mod_ui.services.websocket_gateway.main.event_router", None),
+        ):
             mock_websocket = Mock(spec=WebSocket)
             mock_websocket.close = AsyncMock()
 
@@ -93,14 +95,16 @@ class TestWebSocketFunctionality:
     @pytest.mark.asyncio
     async def test_websocket_message_handling(self, mock_services):
         """Test WebSocket message handling"""
-        with patch(
-            "mod_ui.services.websocket_gateway.main.connection_manager",
-            mock_services["connection_manager"],
-        ), patch(
-            "mod_ui.services.websocket_gateway.main.event_router",
-            mock_services["event_router"],
+        with (
+            patch(
+                "mod_ui.services.websocket_gateway.main.connection_manager",
+                mock_services["connection_manager"],
+            ),
+            patch(
+                "mod_ui.services.websocket_gateway.main.event_router",
+                mock_services["event_router"],
+            ),
         ):
-
             mock_websocket = Mock(spec=WebSocket)
             mock_websocket.accept = AsyncMock()
             mock_websocket.receive_text = AsyncMock(
@@ -124,14 +128,16 @@ class TestWebSocketFunctionality:
     @pytest.mark.asyncio
     async def test_websocket_error_handling(self, mock_services):
         """Test WebSocket error handling"""
-        with patch(
-            "mod_ui.services.websocket_gateway.main.connection_manager",
-            mock_services["connection_manager"],
-        ), patch(
-            "mod_ui.services.websocket_gateway.main.event_router",
-            mock_services["event_router"],
+        with (
+            patch(
+                "mod_ui.services.websocket_gateway.main.connection_manager",
+                mock_services["connection_manager"],
+            ),
+            patch(
+                "mod_ui.services.websocket_gateway.main.event_router",
+                mock_services["event_router"],
+            ),
         ):
-
             mock_websocket = Mock(spec=WebSocket)
             mock_websocket.accept = AsyncMock()
             mock_websocket.receive_text = AsyncMock(

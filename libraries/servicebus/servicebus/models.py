@@ -1,16 +1,18 @@
 """
 Core data models for microservice communication
 """
+
 import uuid
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class ResponseStatus(str, Enum):
     """Response status codes"""
+
     SUCCESS = "success"
     ERROR = "error"
     TIMEOUT = "timeout"
@@ -31,18 +33,27 @@ class ServiceRequest(BaseModel):
     timeout: Optional[float] = None  # Per-request timeout override
     priority: int = Field(default=0)  # Message priority (higher = more important)
     metadata: Dict[str, Any] = Field(default_factory=dict)  # Extra context
-    
-    @validator('request_type')
-    def request_type_not_empty(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError('request_type cannot be empty')
-        return v.strip()
 
-    @validator('service_name')
-    def service_name_not_empty(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError('service_name cannot be empty')
-        return v.strip()
+    # Pydantic v2 field validators
+    @field_validator("request_type", mode="before")
+    @classmethod
+    def _fv_request_type_not_empty(cls, v):
+        if v is None:
+            raise ValueError("request_type cannot be empty")
+        s = str(v).strip()
+        if not s:
+            raise ValueError("request_type cannot be empty")
+        return s
+
+    @field_validator("service_name", mode="before")
+    @classmethod
+    def _fv_service_name_not_empty(cls, v):
+        if v is None:
+            raise ValueError("service_name cannot be empty")
+        s = str(v).strip()
+        if not s:
+            raise ValueError("service_name cannot be empty")
+        return s
 
 
 class ServiceResponse(BaseModel):
@@ -58,7 +69,7 @@ class ServiceResponse(BaseModel):
     processing_time_ms: Optional[float] = None
     service_name: str  # Which service handled this
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    
+
     @property
     def success(self) -> bool:
         """Check if the response indicates success"""
@@ -72,7 +83,7 @@ class ServiceResponse(BaseModel):
 
 class ServiceEvent(BaseModel):
     """Event-based message for pub/sub without request/response"""
-    
+
     event_type: str
     service_name: str
     data: Dict[str, Any] = Field(default_factory=dict)
@@ -80,17 +91,21 @@ class ServiceEvent(BaseModel):
     event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     metadata: Dict[str, Any] = Field(default_factory=dict)
     tags: List[str] = Field(default_factory=list)  # For filtering/routing
-    
-    @validator('event_type')
-    def event_type_not_empty(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError('event_type cannot be empty')
-        return v.strip()
+
+    @field_validator("event_type", mode="before")
+    @classmethod
+    def _fv_event_type_not_empty(cls, v):
+        if v is None:
+            raise ValueError("event_type cannot be empty")
+        s = str(v).strip()
+        if not s:
+            raise ValueError("event_type cannot be empty")
+        return s
 
 
 class ServiceCapability(BaseModel):
     """Describes what a service can do"""
-    
+
     request_type: str
     description: str
     input_schema: Optional[Dict[str, Any]] = None  # JSON schema for validation
@@ -103,7 +118,7 @@ class ServiceCapability(BaseModel):
 
 class ServiceRegistration(BaseModel):
     """Service registration information for service discovery"""
-    
+
     service_name: str
     capabilities: List[ServiceCapability]
     health_check_endpoint: Optional[str] = None
@@ -116,7 +131,7 @@ class ServiceRegistration(BaseModel):
 
 class ServiceHealth(BaseModel):
     """Service health check response"""
-    
+
     service_name: str
     status: str  # "healthy", "unhealthy", "degraded"
     checks: Dict[str, Any] = Field(default_factory=dict)  # Individual health checks
@@ -127,7 +142,7 @@ class ServiceHealth(BaseModel):
 
 class RequestMetrics(BaseModel):
     """Metrics for a specific request/response"""
-    
+
     service_name: str
     request_type: str
     duration_ms: float

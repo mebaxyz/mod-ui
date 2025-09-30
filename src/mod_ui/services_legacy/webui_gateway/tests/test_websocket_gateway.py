@@ -72,17 +72,20 @@ class TestWebSocketGateway:
 
     def test_status_endpoint(self, client, mock_services):
         """Test status endpoint"""
-        with patch(
-            "mod_ui.services.websocket_gateway.main.connection_manager",
-            mock_services["connection_manager"],
-        ), patch(
-            "mod_ui.services.websocket_gateway.main.event_router",
-            mock_services["event_router"],
-        ), patch(
-            "mod_ui.services.websocket_gateway.main.redis_subscriber",
-            mock_services["redis_subscriber"],
+        with (
+            patch(
+                "mod_ui.services.websocket_gateway.main.connection_manager",
+                mock_services["connection_manager"],
+            ),
+            patch(
+                "mod_ui.services.websocket_gateway.main.event_router",
+                mock_services["event_router"],
+            ),
+            patch(
+                "mod_ui.services.websocket_gateway.main.redis_subscriber",
+                mock_services["redis_subscriber"],
+            ),
         ):
-
             # Mock stats
             mock_stats = Mock()
             mock_stats.total_connections = 10
@@ -126,9 +129,9 @@ class TestWebSocketGateway:
                     "subscriptions": [],
                 }
             ]
-            mock_services["connection_manager"].get_connection_info.return_value = (
-                mock_connections
-            )
+            mock_services[
+                "connection_manager"
+            ].get_connection_info.return_value = mock_connections
 
             response = client.get("/api/connections/connections")
             assert response.status_code == 200
@@ -140,14 +143,16 @@ class TestWebSocketGateway:
 
     def test_broadcast_endpoints(self, client, mock_services):
         """Test broadcast endpoints"""
-        with patch(
-            "mod_ui.services.websocket_gateway.main.connection_manager",
-            mock_services["connection_manager"],
-        ), patch(
-            "mod_ui.services.websocket_gateway.main.event_router",
-            mock_services["event_router"],
+        with (
+            patch(
+                "mod_ui.services.websocket_gateway.main.connection_manager",
+                mock_services["connection_manager"],
+            ),
+            patch(
+                "mod_ui.services.websocket_gateway.main.event_router",
+                mock_services["event_router"],
+            ),
         ):
-
             # Test general broadcast
             mock_services["connection_manager"].broadcast_to_all.return_value = 3
 
@@ -185,9 +190,9 @@ class TestWebSocketGateway:
                     "subscriptions": [],
                 }
             ]
-            mock_services["connection_manager"].get_connection_info.return_value = (
-                mock_connections
-            )
+            mock_services[
+                "connection_manager"
+            ].get_connection_info.return_value = mock_connections
 
             response = client.get("/api/connections/clients")
             assert response.status_code == 200

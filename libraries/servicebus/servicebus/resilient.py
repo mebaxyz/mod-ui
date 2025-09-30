@@ -10,11 +10,9 @@ This provides the simple interface you want:
 import asyncio
 import logging
 import time
-from datetime import datetime
 from typing import Any, Awaitable, Callable, Dict, Optional
 
 import redis.asyncio as redis
-from redis.exceptions import ConnectionError, RedisError, TimeoutError
 
 from .config import get_config
 from .models import ServiceEvent
@@ -51,14 +49,14 @@ class ResilientServiceBus:
         self._reconnect_delay = 1.0  # Start with 1 second
         self._max_reconnect_delay = 60.0  # Max 1 minute between attempts
         self._reconnect_backoff = 1.5  # Exponential backoff multiplier
-        self._last_connection_time = 0
+        self._last_connection_time = 0.0
         self._connection_failures = 0
 
         # Background tasks
         self._health_task: Optional[asyncio.Task] = None
         self._reconnect_task: Optional[asyncio.Task] = None
 
-        logger.info(f"ResilientServiceBus created for service '{service_name}'")
+        logger.info("ResilientServiceBus created for service '%s'", service_name)
 
     def on_event(
         self, event_type: str, handler: Callable[[ServiceEvent], Awaitable[None]]
@@ -71,18 +69,21 @@ class ResilientServiceBus:
             handler: Async function to handle the event
         """
         self._event_handlers[event_type] = handler
-        logger.info(f"Registered handler for event type '{event_type}'")
+        logger.info("Registered handler for event type '%s'", event_type)
 
         # If already running, subscribe immediately
         if self._current_service and self._is_running:
             try:
                 self._current_service.subscribe_to_event(event_type, handler)
                 logger.info(
-                    f"Immediately subscribed to '{event_type}' (service already running)"
+                    "Immediately subscribed to '%s' (service already running)",
+                    event_type,
                 )
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-except
                 logger.warning(
-                    f"Failed to immediately subscribe to '{event_type}': {e}"
+                    "Failed to immediately subscribe to '%s': %s",
+                    event_type,
+                    e,
                 )
 
     async def start(self) -> None:
@@ -92,11 +93,12 @@ class ResilientServiceBus:
         """
         if self._is_running:
             logger.warning(
-                f"ResilientServiceBus for '{self.service_name}' is already running"
+                "ResilientServiceBus for '%s' is already running",
+                self.service_name,
             )
             return
 
-        logger.info(f"Starting ResilientServiceBus for '{self.service_name}'...")
+        logger.info("Starting ResilientServiceBus for '%s'...", self.service_name)
         self._should_stop = False
 
         # Start the connection management
@@ -107,7 +109,8 @@ class ResilientServiceBus:
 
         self._is_running = True
         logger.info(
-            f"ResilientServiceBus for '{self.service_name}' started successfully"
+            "ResilientServiceBus for '%s' started successfully",
+            self.service_name,
         )
 
     async def stop(self) -> None:
@@ -115,7 +118,7 @@ class ResilientServiceBus:
         if not self._is_running:
             return
 
-        logger.info(f"Stopping ResilientServiceBus for '{self.service_name}'...")
+        logger.info("Stopping ResilientServiceBus for '%s'...", self.service_name)
         self._should_stop = True
         self._is_running = False
 
@@ -134,10 +137,8 @@ class ResilientServiceBus:
             except asyncio.CancelledError:
                 pass
 
-        # Clean shutdown of current service
-        await self._disconnect()
-
-        logger.info(f"ResilientServiceBus for '{self.service_name}' stopped")
+            # Clean shutdown of current service
+            await self._disconnect()
 
     async def publish_event(self, event_type: str, data: Dict[str, Any]) -> bool:
         """
@@ -148,7 +149,8 @@ class ResilientServiceBus:
         """
         if not self._current_service:
             logger.warning(
-                f"Cannot publish event '{event_type}' - no active connection"
+                "Cannot publish event '%s' - no active connection",
+                event_type,
             )
             return False
 
@@ -156,7 +158,7 @@ class ResilientServiceBus:
             await self._current_service.publish_event(event_type, data)
             return True
         except Exception as e:
-            logger.error(f"Failed to publish event '{event_type}': {e}")
+            logger.error("Failed to publish event '%s': %s", event_type, e)
             # Trigger reconnection
             asyncio.create_task(self._handle_connection_failure())
             return False
@@ -174,12 +176,15 @@ class ResilientServiceBus:
             raise RuntimeError("No active ServiceBus connection")
 
         try:
+            # Accessing a protected member and dynamic client API - narrow with localized pylint disables
+            # pylint: disable=protected-access, no-member
             client = self._current_service._client
             return await client.call_service(
                 service_name, method, {"args": args, "kwargs": kwargs}
             )
+            # pylint: enable=protected-access, no-member
         except Exception as e:
-            logger.error(f"Failed to call {service_name}.{method}: {e}")
+            logger.error("Failed to call %s.%s: %s", service_name, method, e)
             # Trigger reconnection for next time
             asyncio.create_task(self._handle_connection_failure())
             raise
@@ -220,7 +225,8 @@ class ResilientServiceBus:
         """Create a new ServiceBus connection"""
         try:
             logger.info(
-                f"Creating new ServiceBus connection for '{self.service_name}'..."
+                "Creating new ServiceBus connection for '%s'...",
+                self.service_name,
             )
 
             # Create Redis client
@@ -250,18 +256,21 @@ class ResilientServiceBus:
             # Subscribe to all registered events
             for event_type, handler in self._event_handlers.items():
                 self._current_service.subscribe_to_event(event_type, handler)
-                logger.info(f"Subscribed to event '{event_type}'")
+                logger.info("Subscribed to event '%s'", event_type)
 
             # Update connection state
             self._last_connection_time = time.time()
             self._connection_failures = 0
             self._reconnect_delay = 1.0  # Reset backoff
 
-            logger.info(f"ServiceBus connection established for '{self.service_name}'")
+            logger.info(
+                "ServiceBus connection established for '%s'",
+                self.service_name,
+            )
             return True
 
-        except Exception as e:
-            logger.error(f"Failed to create ServiceBus connection: {e}")
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error("Failed to create ServiceBus connection: %s", e)
             self._connection_failures += 1
             await self._disconnect()
             return False
@@ -271,16 +280,16 @@ class ResilientServiceBus:
         if self._current_service:
             try:
                 await self._current_service.stop()
-            except Exception as e:
-                logger.warning(f"Error stopping service: {e}")
+            except Exception as e:  # pylint: disable=broad-except
+                logger.warning("Error stopping service: %s", e)
             finally:
                 self._current_service = None
 
         if self._redis_client:
             try:
                 await self._redis_client.close()
-            except Exception as e:
-                logger.warning(f"Error closing Redis client: {e}")
+            except Exception as e:  # pylint: disable=broad-except
+                logger.warning("Error closing Redis client: %s", e)
             finally:
                 self._redis_client = None
 
@@ -294,12 +303,14 @@ class ResilientServiceBus:
             await self._redis_client.ping()
 
             # Test ServiceBus by calling ping
+            # pylint: disable=protected-access, no-member
             client = self._current_service._client
             await client.call_service(self.service_name, "ping")
+            # pylint: enable=protected-access, no-member
 
             return True
-        except Exception as e:
-            logger.warning(f"Connection health check failed: {e}")
+        except Exception as e:  # pylint: disable=broad-except
+            logger.warning("Connection health check failed: %s", e)
             return False
 
     async def _handle_connection_failure(self) -> None:
@@ -307,7 +318,7 @@ class ResilientServiceBus:
         if self._should_stop:
             return
 
-        logger.warning(f"Connection failure detected for '{self.service_name}'")
+        logger.warning("Connection failure detected for '%s'", self.service_name)
 
         # Cancel any existing reconnect task
         if self._reconnect_task and not self._reconnect_task.done():
@@ -321,20 +332,20 @@ class ResilientServiceBus:
         while not self._should_stop and not await self._ensure_connection():
             # Calculate delay with exponential backoff
             delay = min(self._reconnect_delay, self._max_reconnect_delay)
-            logger.info(f"Reconnection failed, retrying in {delay:.1f}s...")
+            logger.info("Reconnection failed, retrying in %.1fs...", delay)
 
             await asyncio.sleep(delay)
             self._reconnect_delay *= self._reconnect_backoff
 
         if not self._should_stop:
-            logger.info(f"Reconnection successful for '{self.service_name}'")
+            logger.info("Reconnection successful for '%s'", self.service_name)
 
     async def _health_monitoring_loop(self) -> None:
         """Background health monitoring"""
         while not self._should_stop:
             try:
                 if not await self._test_connection():
-                    logger.warning(f"Health check failed for '{self.service_name}'")
+                    logger.warning("Health check failed for '%s'", self.service_name)
                     await self._handle_connection_failure()
                 else:
                     # Connection is healthy
@@ -345,15 +356,17 @@ class ResilientServiceBus:
 
             except asyncio.CancelledError:
                 break
-            except Exception as e:
-                logger.error(f"Error in health monitoring: {e}")
+            except Exception as e:  # pylint: disable=broad-except
+                logger.error("Error in health monitoring: %s", e)
                 await asyncio.sleep(10)
 
 
 # Convenience function for the simple interface you want
 async def create_resilient_service(
     service_name: str,
-    event_handlers: Dict[str, Callable[[ServiceEvent], Awaitable[None]]] = None,
+    event_handlers: Optional[
+        Dict[str, Callable[[ServiceEvent], Awaitable[None]]]
+    ] = None,
     redis_url: Optional[str] = None,
 ) -> ResilientServiceBus:
     """

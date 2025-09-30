@@ -59,6 +59,34 @@ pip install -e .
 - pydantic 2.0+
 - redis-py (async)
 
+## ZeroMQ implementation
+
+This library ships a lightweight ZeroMQ-based implementation that can be used
+instead of Redis for local or containerized deployments where a broker is not
+desirable. The ZeroMQ implementation exposes the same `Service` API and supports
+RPC (REQ/REP) and events (PUB/SUB).
+
+Configuration (environment variables)
+- COMM_ZEROMQ_BASE_PORT: base port used for deterministic port allocation (default 5555)
+- COMM_ZEROMQ_BIND_ADDRESS: address to bind ZeroMQ sockets to (default 127.0.0.1)
+- COMM_ZEROMQ_RCV_TIMEOUT_MS: socket receive timeout in milliseconds (default 5000)
+- COMM_ZEROMQ_SND_TIMEOUT_MS: socket send timeout in milliseconds (default 5000)
+- COMM_ZEROMQ_HASH_MODULUS: number of buckets used to map service name to ports (default 1000)
+
+Port mapping
+- RPC (REQ/REP): base_port + (crc32(service_name) % hash_modulus)
+- PUB: base_port + hash_modulus + (crc32(service_name) % hash_modulus)
+- SUB: base_port + 2*hash_modulus + (crc32(service_name) % hash_modulus)
+
+Health check
+- The ZeroMQ `Service` exposes a `health` RPC method by convention. Call
+	`service.call("<service_name>", "health")` to get a `ServiceHealth`-like
+	payload describing service status, bound ports, and registered handlers.
+
+Notes
+- PUB/SUB delivery is ephemeral. Subscribers must be connected prior to the
+	publisher emitting important events if you need reliable delivery.
+
 ## 📄 Credits
 
 **Author:** Nicolas  

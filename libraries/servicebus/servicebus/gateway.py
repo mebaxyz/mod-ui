@@ -8,7 +8,7 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, Optional
 
 from .config import CommConfig, set_config
 from .models import ServiceEvent
@@ -17,7 +17,7 @@ from .service import Service
 logger = logging.getLogger(__name__)
 
 
-class GatewayService:
+class GatewayService:  # pylint: disable=too-many-instance-attributes
     """
     Enhanced Service wrapper specifically designed for gateway applications
 
@@ -46,7 +46,9 @@ class GatewayService:
 
         # WebSocket client management (if enabled)
         self.websocket_clients: Dict[str, Any] = {}
-        self.broadcast_callback: Optional[Callable] = None
+        self.broadcast_callback: Optional[
+            Callable[[Dict[str, Any]], Awaitable[None]]
+        ] = None
 
     async def initialize(self) -> bool:
         """
@@ -56,7 +58,7 @@ class GatewayService:
             True if successful, False if failed (but service can still operate)
         """
         try:
-            logger.info(f"Initializing gateway service '{self.service_name}'...")
+            logger.info("Initializing gateway service '%s'...", self.service_name)
 
             # Auto-configure ServiceBus from environment
             if self.auto_configure:
@@ -82,13 +84,14 @@ class GatewayService:
 
             self.is_initialized = True
             logger.info(
-                f"Gateway service '{self.service_name}' initialized successfully"
+                "Gateway service '%s' initialized successfully",
+                self.service_name,
             )
             return True
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-except
             self._startup_error = e
-            logger.error(f"Failed to initialize gateway service: {e}")
+            logger.error("Failed to initialize gateway service: %s", e)
             if not self.safe_startup:
                 raise
             return False
@@ -102,7 +105,7 @@ class GatewayService:
 
         config = CommConfig(redis_url=redis_url)
         set_config(config)
-        logger.info(f"Auto-configured ServiceBus with Redis: {redis_url}")
+        logger.info("Auto-configured ServiceBus with Redis: %s", redis_url)
 
     async def _safe_start(self):
         """Start service in background task to avoid blocking"""
@@ -115,8 +118,8 @@ class GatewayService:
             logger.warning(
                 "Service startup taking longer than expected, continuing in background"
             )
-        except Exception as e:
-            logger.error(f"Service startup failed: {e}")
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error("Service startup failed: %s", e)
             if not self.safe_startup:
                 raise
 
@@ -133,10 +136,11 @@ class GatewayService:
                     await self.broadcast_callback(event.data)
                 else:
                     logger.debug(
-                        f"Received websocket broadcast but no callback registered: {event.data}"
+                        "Received websocket broadcast but no callback registered: %s",
+                        event.data,
                     )
-            except Exception as e:
-                logger.error(f"Error handling websocket broadcast: {e}")
+            except Exception as e:  # pylint: disable=broad-except
+                logger.error("Error handling websocket broadcast: %s", e)
 
         self.service.subscribe_to_event(
             "websocket_broadcast", handle_websocket_broadcast
@@ -144,7 +148,7 @@ class GatewayService:
         logger.info("Registered websocket broadcast handler")
 
     def set_websocket_broadcast_callback(
-        self, callback: Callable[[Dict[str, Any]], None]
+        self, callback: Callable[[Dict[str, Any]], Awaitable[None]]
     ):
         """Set callback for websocket broadcast events"""
         self.broadcast_callback = callback
@@ -163,7 +167,8 @@ class GatewayService:
             await self.service.publish_event(event_type, data)
         else:
             logger.warning(
-                f"Cannot publish event '{event_type}' - service not initialized"
+                "Cannot publish event '%s' - service not initialized",
+                event_type,
             )
 
     async def call_service(
@@ -172,27 +177,38 @@ class GatewayService:
         """Call another service through ServiceBus"""
         if self.service and self.is_initialized:
             return await self.service.call(service_name, request_type, data or {})
-        else:
-            logger.warning(
-                f"Cannot call service '{service_name}' - service not initialized"
-            )
-            return None
+        logger.warning(
+            "Cannot call service '%s' - service not initialized",
+            service_name,
+        )
+        return None
 
     async def health_check(self) -> Dict[str, Any]:
         """Get health status of the gateway service"""
+        # Prefer public API if available to avoid protected member access
+        sb_running = False
+        if self.service:
+            if hasattr(self.service, "is_running"):
+                try:
+                    sb_running = self.service.is_running()
+                except Exception:
+                    sb_running = getattr(self.service, "_is_running", False)
+            else:
+                sb_running = getattr(self.service, "_is_running", False)
+
         return {
             "service_name": self.service_name,
             "is_initialized": self.is_initialized,
             "startup_error": str(self._startup_error) if self._startup_error else None,
             "websocket_clients": len(self.websocket_clients),
-            "servicebus_running": self.service._is_running if self.service else False,
+            "servicebus_running": sb_running,
         }
 
     async def shutdown(self):
         """Gracefully shutdown the gateway service"""
         if self.service:
             await self.service.stop()
-        logger.info(f"Gateway service '{self.service_name}' shutdown complete")
+        logger.info("Gateway service '%s' shutdown complete", self.service_name)
 
 
 @asynccontextmanager
@@ -218,7 +234,11 @@ async def gateway_service(
 
 # Convenience function for common gateway initialization
 async def create_gateway_service(
-    service_name: str, websocket_broadcast_callback: Optional[Callable] = None, **kwargs
+    service_name: str,
+    websocket_broadcast_callback: Optional[
+        Callable[[Dict[str, Any]], Awaitable[None]]
+    ] = None,
+    **kwargs,
 ) -> GatewayService:
     """
     Create and initialize a gateway service with common patterns

@@ -239,7 +239,7 @@ def create_plugin_event(
     instance_id: str,
     plugin_uri: str,
     session_id: Optional[str] = None,
-    **kwargs
+    **kwargs,
 ) -> SessionEvent:
     """Create a plugin-related event"""
     return SessionEvent(
@@ -301,7 +301,7 @@ def create_client_event(
     source_service: str,
     client_id: str,
     session_id: Optional[str] = None,
-    **kwargs
+    **kwargs,
 ) -> SessionEvent:
     """Create a client-related event"""
     return SessionEvent(
