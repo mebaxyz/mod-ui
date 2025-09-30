@@ -1,0 +1,38 @@
+# MOD UI Consolidated Services - Combined Requirements
+# This file includes all dependencies for the consolidated architecture
+
+# Core FastAPI and async dependencies
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+websockets>=12.0
+pydantic>=2.0.0
+python-multipart>=0.0.6
+
+# Redis for service communication
+redis>=5.0.0
+
+# System monitoring and hardware interface
+psutil>=5.9.0
+python-rtmidi>=1.4.0
+
+# Development and testing
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+httpx>=0.24.0
+
+# Optional dependencies for enhanced functionality
+# Uncomment as needed:
+
+# For advanced MIDI processing
+# mido>=1.2.0
+
+# For display management (if using specific hardware)
+# luma.oled>=3.8.0
+# RPi.GPIO>=0.7.1  # Raspberry Pi only
+
+# For advanced audio processing
+# librosa>=0.10.0
+# numpy>=1.24.0
+
+# For system service management
+# systemd-python>=234

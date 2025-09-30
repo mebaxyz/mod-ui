@@ -1,0 +1,108 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: mod_ui_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - mod_ui_network
+
+  client_interface:
+    build:
+      context: .
+      dockerfile: src/mod_ui/services/client_interface/Dockerfile
+    container_name: mod_ui_client_interface
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - CLIENT_INTERFACE_PORT=8080
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./html:/app/html:ro
+      - ./data:/app/data
+    depends_on:
+      - redis
+    networks:
+      - mod_ui_network
+
+  system_resource_management:
+    build:
+      context: .
+      dockerfile: src/mod_ui/services/system_resource_management/Dockerfile
+    container_name: mod_ui_system_management
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - SYSTEM_RESOURCE_PORT=8081
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./data:/app/data
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    privileged: true
+    depends_on:
+      - redis
+    networks:
+      - mod_ui_network
+
+  audio_processing:
+    build:
+      context: .
+      dockerfile: src/mod_ui/services/audio_processing/Dockerfile
+    container_name: mod_ui_audio_processing
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+      - "5555:5555"  # mod-host port
+    environment:
+      - AUDIO_PROCESSING_PORT=8082
+      - REDIS_URL=redis://redis:6379
+      - JACK_SAMPLE_RATE=48000
+      - JACK_BUFFER_SIZE=256
+    volumes:
+      - ./data:/app/data
+      - /dev/snd:/dev/snd
+    devices:
+      - /dev/snd
+    privileged: true
+    depends_on:
+      - redis
+    networks:
+      - mod_ui_network
+
+  hardware_interface:
+    build:
+      context: .
+      dockerfile: src/mod_ui/services/hardware_interface/Dockerfile
+    container_name: mod_ui_hardware_interface
+    restart: unless-stopped
+    ports:
+      - "8083:8083"
+    environment:
+      - HARDWARE_INTERFACE_PORT=8083
+      - REDIS_URL=redis://redis:6379
+      - SIMULATE_HARDWARE=true  # Set to false for real hardware
+    volumes:
+      - ./data:/app/data
+      - /dev:/dev
+    privileged: true
+    depends_on:
+      - redis
+    networks:
+      - mod_ui_network
+
+volumes:
+  redis_data:
+
+networks:
+  mod_ui_network:
+    driver: bridge
