@@ -7,8 +7,12 @@ This service consolidates the audio_engine, plugin_manager, session_service, and
 This service communicates exclusively via ZeroMQ ServiceBus (no HTTP endpoints).
 """
 
+# Localized pylint - module requires use of global variables for runtime wiring
+# pylint: disable=global-statement
+
 import asyncio
 import logging
+import os
 import signal
 from typing import Any, Dict
 
@@ -56,8 +60,61 @@ async def startup():
 
         # Initialize mod-host bridge
         modhost_bridge = ModHostBridge()
-        await modhost_bridge.start()
-        logger.info("ModHost bridge started")
+
+        # Optionally wait until mod-host is ready. Controlled by env var:
+        # AUDIO_WAIT_FOR_MODHOST (true/false) and MODHOST_STARTUP_TIMEOUT (seconds or empty for indefinite)
+        wait_for_modhost = os.getenv("AUDIO_WAIT_FOR_MODHOST", "true").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        timeout_env = os.getenv("MODHOST_STARTUP_TIMEOUT", "")
+        timeout = None
+        if timeout_env:
+            try:
+                timeout = float(timeout_env)
+            except Exception:
+                timeout = None
+
+        if wait_for_modhost:
+            logger.info(
+                "Starting mod-host and waiting until ready (timeout=%s)", timeout
+            )
+            ok = await modhost_bridge.start_and_wait(timeout=timeout)
+            if not ok:
+                # Configurable fail-fast behavior: some deployments want the service
+                # to abort startup if mod-host is not available. This is controlled
+                # by AUDIO_WAIT_FOR_MODHOST_FAILFAST (true/false). Default: false
+                # to preserve the current non-fatal behaviour.
+                failfast = os.getenv(
+                    "AUDIO_WAIT_FOR_MODHOST_FAILFAST", "false"
+                ).lower() in (
+                    "1",
+                    "true",
+                    "yes",
+                )
+
+                if failfast:
+                    logger.error(
+                        "mod-host failed to become ready within timeout=%s; failing startup because AUDIO_WAIT_FOR_MODHOST_FAILFAST=%s",
+                        timeout,
+                        failfast,
+                    )
+                    # Raise to trigger the outer exception handler which will perform
+                    # cleanup (shutdown) and propagate the error to the caller.
+                    raise RuntimeError("mod-host did not become ready within timeout")
+
+                # Non-fatal: continue startup but warn the operator.
+                logger.warning(
+                    "mod-host failed to become ready within timeout=%s; continuing startup without mod-host",
+                    timeout,
+                )
+            else:
+                logger.info("ModHost bridge started and ready")
+        else:
+            # Start but do not wait
+            await modhost_bridge.start()
+            logger.info("ModHost bridge started (not waiting)")
 
         # Initialize plugin manager
         plugin_manager = PluginManager(modhost_bridge, service_bus)
@@ -144,6 +201,20 @@ async def register_service_methods():
     # Health check method
     service_bus.register_handler("health", handle_health_check)
 
+    # Persistence RPCs
+    service_bus.register_handler(
+        "list_saved_pedalboards", handle_list_saved_pedalboards
+    )
+    service_bus.register_handler("load_saved_pedalboard", handle_load_saved_pedalboard)
+    service_bus.register_handler(
+        "delete_saved_pedalboard", handle_delete_saved_pedalboard
+    )
+
+    service_bus.register_handler(
+        "export_saved_pedalboard", handle_export_saved_pedalboard
+    )
+    service_bus.register_handler("import_pedalboard", handle_import_pedalboard)
+
     # Echo for tests
     service_bus.register_handler("echo", handle_echo)
 
@@ -151,54 +222,54 @@ async def register_service_methods():
 
 
 # ServiceBus method handlers
-async def handle_get_available_plugins(**kwargs) -> Dict[str, Any]:
+async def handle_get_available_plugins(**_kwargs) -> Dict[str, Any]:
     """Get available plugins"""
     if not plugin_manager:
         raise RuntimeError("Plugin manager not initialized")
     return await plugin_manager.get_available_plugins()
 
 
-async def handle_load_plugin(**kwargs) -> Dict[str, Any]:
+async def handle_load_plugin(**_kwargs) -> Dict[str, Any]:
     """Load plugin"""
     if not plugin_manager:
         raise RuntimeError("Plugin manager not initialized")
 
-    uri = kwargs.get("uri")
+    uri = _kwargs.get("uri")
     if not uri:
         raise ValueError("Missing required parameter: uri")
 
-    x = kwargs.get("x", 0.0)
-    y = kwargs.get("y", 0.0)
-    parameters = kwargs.get("parameters")
+    x = _kwargs.get("x", 0.0)
+    y = _kwargs.get("y", 0.0)
+    parameters = _kwargs.get("parameters")
 
     return await plugin_manager.load_plugin(uri, x, y, parameters)
 
 
-async def handle_unload_plugin(**kwargs) -> Dict[str, Any]:
+async def handle_unload_plugin(**_kwargs) -> Dict[str, Any]:
     """Unload plugin"""
     if not plugin_manager:
         raise RuntimeError("Plugin manager not initialized")
 
-    instance_id = kwargs.get("instance_id")
+    instance_id = _kwargs.get("instance_id")
     if not instance_id:
         raise ValueError("Missing required parameter: instance_id")
 
     return await plugin_manager.unload_plugin(instance_id)
 
 
-async def handle_get_plugin_info(**kwargs) -> Dict[str, Any]:
+async def handle_get_plugin_info(**_kwargs) -> Dict[str, Any]:
     """Get plugin info"""
     if not plugin_manager:
         raise RuntimeError("Plugin manager not initialized")
 
-    instance_id = kwargs.get("instance_id")
+    instance_id = _kwargs.get("instance_id")
     if not instance_id:
         raise ValueError("Missing required parameter: instance_id")
 
     return await plugin_manager.get_plugin_info(instance_id)
 
 
-async def handle_list_instances(**kwargs) -> Dict[str, Any]:
+async def handle_list_instances(**_kwargs) -> Dict[str, Any]:
     """List plugin instances"""
     if not plugin_manager:
         raise RuntimeError("Plugin manager not initialized")
@@ -206,14 +277,14 @@ async def handle_list_instances(**kwargs) -> Dict[str, Any]:
     return await plugin_manager.list_instances()
 
 
-async def handle_set_parameter(**kwargs) -> Dict[str, Any]:
+async def handle_set_parameter(**_kwargs) -> Dict[str, Any]:
     """Set plugin parameter"""
     if not plugin_manager:
         raise RuntimeError("Plugin manager not initialized")
 
-    instance_id = kwargs.get("instance_id")
-    parameter = kwargs.get("parameter")
-    value = kwargs.get("value")
+    instance_id = _kwargs.get("instance_id")
+    parameter = _kwargs.get("parameter")
+    value = _kwargs.get("value")
 
     if not all([instance_id, parameter, value is not None]):
         raise ValueError("Missing required parameters: instance_id, parameter, value")
@@ -221,13 +292,13 @@ async def handle_set_parameter(**kwargs) -> Dict[str, Any]:
     return await plugin_manager.set_parameter(instance_id, parameter, value)
 
 
-async def handle_get_parameter(**kwargs) -> Dict[str, Any]:
+async def handle_get_parameter(**_kwargs) -> Dict[str, Any]:
     """Get plugin parameter"""
     if not plugin_manager:
         raise RuntimeError("Plugin manager not initialized")
 
-    instance_id = kwargs.get("instance_id")
-    parameter = kwargs.get("parameter")
+    instance_id = _kwargs.get("instance_id")
+    parameter = _kwargs.get("parameter")
 
     if not all([instance_id, parameter]):
         raise ValueError("Missing required parameters: instance_id, parameter")
@@ -235,33 +306,33 @@ async def handle_get_parameter(**kwargs) -> Dict[str, Any]:
     return await plugin_manager.get_parameter(instance_id, parameter)
 
 
-async def handle_create_pedalboard(**kwargs) -> Dict[str, Any]:
+async def handle_create_pedalboard(**_kwargs) -> Dict[str, Any]:
     """Create pedalboard"""
     if not session_manager:
         raise RuntimeError("Session manager not initialized")
 
-    name = kwargs.get("name")
+    name = _kwargs.get("name")
     if not name:
         raise ValueError("Missing required parameter: name")
 
-    description = kwargs.get("description", "")
+    description = _kwargs.get("description", "")
 
     return await session_manager.create_pedalboard(name, description)
 
 
-async def handle_load_pedalboard(**kwargs) -> Dict[str, Any]:
+async def handle_load_pedalboard(**_kwargs) -> Dict[str, Any]:
     """Load pedalboard"""
     if not session_manager:
         raise RuntimeError("Session manager not initialized")
 
-    pedalboard_data = kwargs.get("pedalboard_data")
+    pedalboard_data = _kwargs.get("pedalboard_data")
     if not pedalboard_data:
         raise ValueError("Missing required parameter: pedalboard_data")
 
     return await session_manager.load_pedalboard(pedalboard_data)
 
 
-async def handle_save_pedalboard(**kwargs) -> Dict[str, Any]:
+async def handle_save_pedalboard(**_kwargs) -> Dict[str, Any]:
     """Save pedalboard"""
     if not session_manager:
         raise RuntimeError("Session manager not initialized")
@@ -269,7 +340,7 @@ async def handle_save_pedalboard(**kwargs) -> Dict[str, Any]:
     return await session_manager.save_pedalboard()
 
 
-async def handle_get_current_pedalboard(**kwargs) -> Dict[str, Any]:
+async def handle_get_current_pedalboard(**_kwargs) -> Dict[str, Any]:
     """Get current pedalboard"""
     if not session_manager:
         raise RuntimeError("Session manager not initialized")
@@ -277,15 +348,15 @@ async def handle_get_current_pedalboard(**kwargs) -> Dict[str, Any]:
     return await session_manager.get_current_pedalboard()
 
 
-async def handle_create_connection(**kwargs) -> Dict[str, Any]:
+async def handle_create_connection(**_kwargs) -> Dict[str, Any]:
     """Create connection"""
     if not session_manager:
         raise RuntimeError("Session manager not initialized")
 
-    source_plugin = kwargs.get("source_plugin")
-    source_port = kwargs.get("source_port")
-    target_plugin = kwargs.get("target_plugin")
-    target_port = kwargs.get("target_port")
+    source_plugin = _kwargs.get("source_plugin")
+    source_port = _kwargs.get("source_port")
+    target_plugin = _kwargs.get("target_plugin")
+    target_port = _kwargs.get("target_port")
 
     if not all([source_plugin, source_port, target_plugin, target_port]):
         raise ValueError(
@@ -297,51 +368,51 @@ async def handle_create_connection(**kwargs) -> Dict[str, Any]:
     )
 
 
-async def handle_remove_connection(**kwargs) -> Dict[str, Any]:
+async def handle_remove_connection(**_kwargs) -> Dict[str, Any]:
     """Remove connection"""
     if not session_manager:
         raise RuntimeError("Session manager not initialized")
 
-    connection_id = kwargs.get("connection_id")
+    connection_id = _kwargs.get("connection_id")
     if not connection_id:
         raise ValueError("Missing required parameter: connection_id")
 
     return await session_manager.remove_connection(connection_id)
 
 
-async def handle_create_snapshot(**kwargs) -> Dict[str, Any]:
+async def handle_create_snapshot(**_kwargs) -> Dict[str, Any]:
     """Create snapshot"""
     if not session_manager:
         raise RuntimeError("Session manager not initialized")
 
-    name = kwargs.get("name")
+    name = _kwargs.get("name")
     if not name:
         raise ValueError("Missing required parameter: name")
 
     return await session_manager.create_snapshot(name)
 
 
-async def handle_apply_snapshot(**kwargs) -> Dict[str, Any]:
+async def handle_apply_snapshot(**_kwargs) -> Dict[str, Any]:
     """Apply snapshot"""
     if not session_manager:
         raise RuntimeError("Session manager not initialized")
 
-    snapshot = kwargs.get("snapshot")
+    snapshot = _kwargs.get("snapshot")
     if not snapshot:
         raise ValueError("Missing required parameter: snapshot")
 
     return await session_manager.apply_snapshot(snapshot)
 
 
-async def handle_health_check(**kwargs) -> Dict[str, Any]:
+async def handle_health_check(**_kwargs) -> Dict[str, Any]:
     """Health check via ServiceBus"""
-    modhost_status = modhost_bridge.is_connected() if modhost_bridge else False
+    modhost_status = modhost_bridge.get_status() if modhost_bridge else None
 
     return {
         "service": SERVICE_NAME,
         "status": "healthy" if running else "stopped",
         "details": {
-            "modhost_connected": modhost_status,
+            "modhost": modhost_status,
             "plugin_manager_ready": plugin_manager is not None,
             "session_manager_ready": session_manager is not None,
             "service_bus_connected": service_bus.is_running() if service_bus else False,
@@ -353,10 +424,69 @@ async def handle_health_check(**kwargs) -> Dict[str, Any]:
     }
 
 
-async def handle_echo(**kwargs) -> Dict[str, Any]:
+async def handle_echo(**_kwargs) -> Dict[str, Any]:
     """Echo method for testing"""
-    message = kwargs.get("message", "")
+    message = _kwargs.get("message", "")
     return {"echo": message}
+
+
+async def handle_list_saved_pedalboards(**_kwargs) -> Dict[str, Any]:
+    from mod_ui.services.audio_processing import storage
+
+    items = storage.list_pedalboards()
+    return {"saved": items}
+
+
+async def handle_load_saved_pedalboard(**_kwargs) -> Dict[str, Any]:
+    pb_id = _kwargs.get("id")
+    if not pb_id:
+        raise ValueError("Missing required parameter: id")
+
+    from mod_ui.services.audio_processing import storage
+
+    data = storage.load_pedalboard(pb_id)
+    if data is None:
+        raise ValueError(f"Pedalboard not found: {pb_id}")
+
+    return {"pedalboard": data}
+
+
+async def handle_delete_saved_pedalboard(**_kwargs) -> Dict[str, Any]:
+    pb_id = _kwargs.get("id")
+    if not pb_id:
+        raise ValueError("Missing required parameter: id")
+
+    from mod_ui.services.audio_processing import storage
+
+    ok = storage.delete_pedalboard(pb_id)
+    return {"deleted": ok}
+
+
+async def handle_export_saved_pedalboard(**_kwargs) -> Dict[str, Any]:
+    pb_id = _kwargs.get("id")
+    out_path = _kwargs.get("out_path")
+    if not pb_id or not out_path:
+        raise ValueError("Missing required parameters: id, out_path")
+
+    from mod_ui.services.audio_processing import storage
+
+    ok = storage.export_pedalboard(pb_id, out_path)
+    return {"exported": ok, "out_path": out_path}
+
+
+async def handle_import_pedalboard(**_kwargs) -> Dict[str, Any]:
+    file_path = _kwargs.get("file_path")
+    if not file_path:
+        raise ValueError("Missing required parameter: file_path")
+
+    from mod_ui.services.audio_processing import storage
+
+    res = storage.import_pedalboard(file_path)
+    if not res:
+        raise ValueError("Import failed or file invalid")
+
+    pb_id, path = res
+    return {"imported_id": pb_id, "path": path}
 
 
 async def main():
@@ -366,7 +496,7 @@ async def main():
         await startup()
 
         # Setup signal handlers for graceful shutdown
-        def signal_handler(signum, frame):
+        def signal_handler(signum, _frame):
             logger.info("Received signal %s, shutting down...", signum)
             asyncio.create_task(shutdown())
 

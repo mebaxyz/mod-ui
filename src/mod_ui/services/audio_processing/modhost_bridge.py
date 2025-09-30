@@ -8,9 +8,13 @@ import asyncio
 import logging
 import os
 import subprocess
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
+
+# Localized pylint - monitor loops and restart handling intentionally use broad excepts
+# pylint: disable=broad-except,unused-variable
 
 
 class ModHostBridge:
@@ -33,6 +37,15 @@ class ModHostBridge:
         self.process: Optional[subprocess.Popen] = None
         self._connected = False
         self._lock = asyncio.Lock()
+        # Supervision / restart bookkeeping
+        self.restart_count = 0
+        self.last_error = None
+        self._start_time = None
+        self._monitor_task = None
+        # Restart policy (configurable via env)
+        # If max_restarts is 0, treat as unlimited restarts (keep trying until available)
+        self.max_restarts = int(os.getenv("MODHOST_MAX_RESTARTS", "0"))
+        self.backoff_base = float(os.getenv("MODHOST_RESTART_BACKOFF_BASE", "0.5"))
 
     async def start(self) -> bool:
         """Start mod-host process"""
@@ -44,6 +57,8 @@ class ModHostBridge:
                 logger.info("Starting mod-host in simulation mode")
                 await asyncio.sleep(0.1)  # Simulate startup time
                 self._connected = True
+                self._start_time = datetime.now()
+                # No monitor task for simulation mode
                 return True
 
             try:
@@ -84,9 +99,17 @@ class ModHostBridge:
                     # Test connection
                     if await self._test_connection():
                         self._connected = True
+                        self._start_time = datetime.now()
                         logger.info(
                             "mod-host started successfully on port %s", self.port
                         )
+                        # Start monitor task to supervise the process
+                        if self._monitor_task is None or self._monitor_task.done():
+                            self._monitor_task = asyncio.create_task(
+                                self._monitor_process()
+                            )
+                        # reset last_error on successful start
+                        self.last_error = None
                         return True
 
                 logger.error("mod-host failed to become ready within timeout")
@@ -95,6 +118,7 @@ class ModHostBridge:
 
             except Exception as e:
                 logger.error("Error starting mod-host: %s", e)
+                self.last_error = str(e)
                 return False
 
     async def stop(self):
@@ -105,6 +129,15 @@ class ModHostBridge:
             if self.simulate:
                 logger.info("Stopping mod-host simulation")
                 return
+            # Cancel monitor task if running
+            if self._monitor_task:
+                try:
+                    self._monitor_task.cancel()
+                    # allow it to cancel gracefully
+                    await asyncio.sleep(0)
+                except Exception:
+                    pass
+                self._monitor_task = None
 
             if self.process:
                 try:
@@ -125,6 +158,7 @@ class ModHostBridge:
 
                 except Exception as e:
                     logger.error("Error stopping mod-host: %s", e)
+                    self.last_error = str(e)
 
     def is_connected(self) -> bool:
         """Check if mod-host is connected"""
@@ -143,6 +177,107 @@ class ModHostBridge:
             return response is not None
         except Exception:
             return False
+
+    async def wait_until_ready(self, timeout: Optional[float] = None) -> bool:
+        """Wait until mod-host is connected.
+
+        This method does NOT call `start()` for you; call `start()` first to trigger
+        the process startup. This only waits for `self._connected` to become True.
+
+        Args:
+            timeout: number of seconds to wait, or None to wait indefinitely.
+
+        Returns:
+            True if connected, False if the timeout elapsed.
+        """
+
+        async def _wait():
+            while not self._connected:
+                await asyncio.sleep(0.02)
+
+        if timeout is None:
+            await _wait()
+            return True
+
+        try:
+            await asyncio.wait_for(_wait(), timeout=timeout)
+            return True
+        except asyncio.TimeoutError:
+            return False
+
+    async def start_and_wait(self, timeout: Optional[float] = None) -> bool:
+        """Start the mod-host and wait until it's ready.
+
+        Convenience wrapper that calls `start()` and then `wait_until_ready()`.
+        Returns True if started and became ready within timeout, else False.
+        """
+        started = await self.start()
+        if not started:
+            return False
+        return await self.wait_until_ready(timeout=timeout)
+
+    async def _monitor_process(self):
+        """Background task that monitors the mod-host process and attempts restarts.
+
+        This task is only active for real (non-simulated) mod-host processes.
+        It will apply an exponential backoff between restart attempts and respect
+        the configured max_restarts.
+        """
+        try:
+            while True:
+                await asyncio.sleep(0.5)
+
+                if not self.process:
+                    break
+
+                code = self.process.poll()
+                if code is None:
+                    # still running
+                    continue
+
+                # Process exited
+                try:
+                    stdout, stderr = self.process.communicate(timeout=0.1)
+                except Exception:
+                    stdout, stderr = ("", "")
+
+                self._connected = False
+                self.restart_count += 1
+                self.last_error = (
+                    f"mod-host exited with code {code}; stderr={stderr}".strip()
+                )
+                logger.warning(
+                    "mod-host exited (code=%s). restart_count=%s",
+                    code,
+                    self.restart_count,
+                )
+
+                if self.max_restarts and self.restart_count > self.max_restarts:
+                    logger.error(
+                        "Exceeded max restarts (%s); not attempting further restarts",
+                        self.max_restarts,
+                    )
+                    break
+
+                # Exponential backoff
+                backoff = min(self.backoff_base * (2 ** (self.restart_count - 1)), 30.0)
+                logger.info("Waiting %s seconds before attempting restart", backoff)
+                await asyncio.sleep(backoff)
+
+                # Attempt to restart the process using existing start path
+                try:
+                    await self.start()
+                except Exception as e:
+                    logger.error("Restart attempt failed: %s", e)
+                    self.last_error = str(e)
+                    # loop will continue and potentially try again
+
+        except asyncio.CancelledError:
+            # Monitor task cancelled during shutdown
+            return
+        except Exception as e:
+            logger.error("Unexpected error in mod-host monitor: %s", e)
+            self.last_error = str(e)
 
     async def _test_connection(self) -> bool:
         """Test if we can connect to mod-host"""
@@ -194,8 +329,8 @@ class ModHostBridge:
             await writer.drain()
 
             # Read response
-            response = await asyncio.wait_for(reader.readline(), timeout=5.0)
-            response = response.decode().strip()
+            raw = await asyncio.wait_for(reader.readline(), timeout=5.0)
+            response = raw.decode().strip()
 
             writer.close()
             await writer.wait_closed()
@@ -306,5 +441,12 @@ class ModHostBridge:
                 self.process is not None and self.process.poll() is None
                 if self.process
                 else False
+            ),
+            "restart_count": self.restart_count,
+            "last_error": self.last_error,
+            "uptime": (
+                (datetime.now() - self._start_time).total_seconds()
+                if self._start_time
+                else 0
             ),
         }

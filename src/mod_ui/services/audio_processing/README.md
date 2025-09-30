@@ -33,21 +33,41 @@ Core real‑time audio engine: plugin hosting, parameter control, session applic
 - routing.py — connect_ports API, basic routing graph
 - tests/ — unit + integration tests (simulate mod-host)
 
-## Development tasks (atomic, copy to todo)
-1. [ ] Implement modhost_bridge.start() that launches mod-host in simulation mode. Acceptance: returns connected True and responds to ping.
-2. [ ] Implement ServiceBus method `load_plugin(uri)` → returns instance_id. Acceptance: ServiceBus call returns 200 + instance_id.
-3. [ ] Implement ServiceBus method `unload_plugin(instance_id)`. Acceptance: instance removed and resources freed.
-4. [ ] Implement `set_parameter(instance_id, symbol, value)` and `get_parameter(...)`. Acceptance: set then get returns same value.
-5. [ ] Implement apply_pedalboard(pedalboard_json) that instantiates plugins and sets parameters. Acceptance: publishes `pedalboard_applied` with applied metadata.
-6. [ ] Implement connect_ports(source, destination) API. Acceptance: routing graph updated; persists within session.
-7. [ ] Add health `/health` endpoint (minimal) exposing: service OK, ServiceBus reachable, mod-host status.
-8. [ ] Add simulation mode toggle and configuration (env var). Acceptance: tests run without real mod-host.
-9. [ ] Add reconnection logic for mod-host and ServiceBus (exponential backoff). Acceptance: recovers after simulated disconnect.
-10. [ ] Add basic metrics (plugin_count, uptime, last_pedalboard_id) and expose via metrics endpoint or health payload.
-11. [ ] Write unit tests for modhost_bridge (start/stop/ping), plugin_manager (load/unload), session_manager (apply/save).
-12. [ ] Add simple integration test: simulate client -> ServiceBus load plugin -> set param -> verify audio engine event.
-13. [ ] Ensure proper graceful shutdown: unload plugins and stop mod-host on SIGTERM.
-14. [ ] Linting and CI: add tests + lint to pipeline.
+## Development tasks (status)
+
+Completed (as of 2025-09-30)
+- Implemented a ZeroMQ-based ServiceBus RPC/PubSub replacement and typed message models.
+- ModHost bridge: `modhost_bridge.py` supports start/stop (simulation mode available), ping/health, supervision with restart/backoff, and exposes status fields (restart_count, last_error, uptime).
+- Startup helpers: `wait_until_ready()` and `start_and_wait(timeout)` to optionally block until mod-host is responsive.
+- Pedalboard persistence: disk-backed save/list/load/delete plus export/import with a schema version field and atomic writes.
+- Service wiring: `main.py` registers RPC handlers for persistence and import/export; audio_processing wired to use ModHostBridge, PluginManager and SessionManager handlers.
+- Tests: pytest + pytest-asyncio tests added for mod-host supervision, restart behavior, wait/start semantics, and pedalboard persistence (all run locally and pass in simulation mode).
+- Simulation mode: `SIMULATE_MODHOST` support for fast, deterministic tests.
+
+Partially completed / in-progress
+- Health: health/healthcheck routed via ServiceBus RPC; if you also need an HTTP /health endpoint in every deployment we can add one (current design exposes health via ServiceBus handlers).
+- Metrics: runtime status fields (uptime, restart_count, last_error) are exposed; additional metrics (plugin_count, last_pedalboard_id) can be added on request.
+- Lint/static: targeted lint fixes applied; some design-level pylint messages remain intentionally deferred and can be cleaned up in a dedicated refactor pass.
+
+Remaining tasks (actionable next steps)
+- Confirm and document desired default for `AUDIO_WAIT_FOR_MODHOST` (current behavior: startup blocks when enabled). Option: make waiting non-fatal (warn only) or default to false for faster startup.
+- Add/verify full graceful shutdown across all platforms (ensure SIGTERM handler unloads plugins and stops mod-host cleanly in production deployments).
+- Expand metrics: add `plugin_count`, `last_pedalboard_id`, and expose via a metrics endpoint or enrich the health payload.
+- Routing API: implement or complete `connect_ports(source, destination)` and persist routing graph in session storage if needed.
+- Finish any remaining PluginManager feature gaps (if load/unload/set/get parameter APIs are incomplete) and add targeted tests.
+- CI integration: add the new tests and lint checks to the repository CI pipeline and ensure they run in simulation mode for speed.
+- Optional: make the mod-host wait behavior softer (log + continue) and add a configuration flag to fail-fast vs. warn-and-continue.
+
+New configuration
+- AUDIO_WAIT_FOR_MODHOST_FAILFAST (env): when true and `AUDIO_WAIT_FOR_MODHOST` is enabled, the service will abort startup if the mod-host does not become ready within `MODHOST_STARTUP_TIMEOUT`. Default: false (keep current warn-and-continue behavior).
+
+Configuration / runtime notes
+- AUDIO_WAIT_FOR_MODHOST (env): when true the service will start the mod-host and wait up to `MODHOST_STARTUP_TIMEOUT` seconds for it to respond. NOTE: wait is now non-fatal — if the mod-host fails to become ready within the timeout the service will continue startup but will log a warning.
+- MODHOST_STARTUP_TIMEOUT (env): seconds (float) to wait for mod-host readiness; empty or unset means indefinite wait when waiting is enabled.
+- SIMULATE_MODHOST (env): when true the ModHostBridge will run in simulation mode (fast, deterministic) used by tests and local dev.
+- AUDIO_PROCESSING_DATA_DIR (env): directory used by the storage module for pedalboards. Defaults to ./data/audio_processing inside the repo when unset.
+
+If you prefer fail-fast behavior (raise on mod-host timeout) we can revert the non-fatal change and make it configurable; tell me your preference.
 
 ## Notes and tips
 - Keep real‑time paths in-process: session_manager should call plugin_manager → audio engine directly without ServiceBus.

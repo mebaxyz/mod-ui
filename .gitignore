@@ -1,52 +1,97 @@
+## macOS
 .DS_Store
-.kdev_include_paths
-package-lock.json
-*~
-*.dll
-*.o
-*.so
-*.pyc
-*.swp
-*.tar.xz
-mod-env/
-.env/
-host/
-*.crf
-*.axf
-*.hex
-*.d
-*.plg
-*.tra
-*.htm
-*.__i
-*.bak
-*.uvgui.*
-*.dep
-data/
-mod-python/
-"Icon\r"
-keys/device_key.pem
-keys/device_key.pub
-keys/model
-keys/serial
-html/pedalboards/*.png
-modui-env/
-build/
-dist/
-utils/test
-*.orig
-*node_modules/
-.idea
-*.egg-info
 
-# VSCode - allow settings and launch for development
+## Editor directories and files
+.idea/
+*.sublime-workspace
+*.sublime-project
+.vscode/*
 !.vscode/settings.json
 !.vscode/launch.json
 !.vscode/README.md
 
-# FastAPI Migration
+## Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+env/
 venv/
+.venv/
+mod-env/
+modui-env/
+pip-wheel-metadata/
+*.egg-info/
+*.egg
+dist/
+build/
+eggs/
+.eggs/
+wheelhouse/
+
+# Test artifacts
+.pytest_cache/
+.cache/
+.mypy_cache/
+.tox/
+.coverage
+coverage.xml
+htmlcov/
+
+## Logs
 logs/
-tmp/
-.env
 *.log
+tmp/
+
+## Compiled / native
+*.so
+*.dylib
+*.dll
+*.o
+*.obj
+*.exe
+*.out
+*.class
+
+## C/C++ build artefacts (including submodules like mod-host)
+cmake-build*/
+build-*/
+bin/
+lib/
+obj/
+*.a
+*.la
+
+## Node / JS
+node_modules/
+package-lock.json
+yarn.lock
+
+## Archives
+*.zip
+*.tar.gz
+*.tar.xz
+*.gz
+
+## Misc
+*~
+*.swp
+*.bak
+*.orig
+"Icon\r"
+
+## Secrets / keys
+keys/device_key.pem
+keys/device_key.pub
+keys/model
+keys/serial
+
+## Project-specific folders that are generated or not tracked
+data/
+host/
+utils/test
+html/pedalboards/*.png
+
+## Keep this file tracked
+!.gitignore

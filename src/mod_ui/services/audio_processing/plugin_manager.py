@@ -9,9 +9,12 @@ import logging
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional, cast
 
 logger = logging.getLogger(__name__)
+
+# Localized pylint - best-effort publish calls use broad except handling
+# pylint: disable=broad-except
 
 
 @dataclass
@@ -57,6 +60,38 @@ class PluginManager:
             "Plugin manager initialized with %s available plugins",
             len(self.available_plugins),
         )
+
+    async def _safe_publish(self, event_name: str, payload: Dict[str, Any]):
+        """Call publisher in a robust way supporting different ServiceBus APIs."""
+        if not self.service_bus:
+            return
+
+        # Try both publish_event and publish to support different servicebus APIs
+        for attr in ("publish_event", "publish"):
+            publisher = getattr(self.service_bus, attr, None)
+            if publisher is None:
+                continue
+
+            # At runtime publisher may be a coroutine function or a normal function.
+            try:
+                # Use typing.cast to convince the analyzer the object is callable
+                if callable(publisher):
+                    pub_callable = cast(Callable[..., Any], publisher)
+                    # pylint: disable=not-callable
+                    result = pub_callable(event_name, payload)
+                    if hasattr(result, "__await__"):
+                        await result
+                else:
+                    # Defensive fallback: retrieve attribute and try calling it
+                    meth = getattr(self.service_bus, attr, None)
+                    if callable(meth):
+                        meth_callable = cast(Callable[..., Any], meth)
+                        # pylint: disable=not-callable
+                        res = meth_callable(event_name, payload)
+                        if hasattr(res, "__await__"):
+                            await res
+            except Exception:
+                logger.debug("Publish %s failed for %s", attr, event_name)
 
     async def _load_available_plugins(self):
         """Load list of available plugins"""
@@ -158,25 +193,11 @@ class PluginManager:
             self.instances[instance_id] = instance
 
             # Publish event (support service bus API compatibility)
-            if self.service_bus:
-                # Try both publish_event and publish to support different servicebus APIs
-                for attr in ("publish_event", "publish"):
-                    publisher = getattr(self.service_bus, attr, None)
-                    if publisher and callable(publisher):
-                        try:
-                            result = publisher(
-                                "plugin_loaded",
-                                {
-                                    "instance_id": instance_id,
-                                    "uri": uri,
-                                    "name": instance.name,
-                                },
-                            )
-                            if hasattr(result, "__await__"):
-                                await result
-                        except Exception:
-                            # Best-effort publish; don't fail the operation on publish errors
-                            logger.debug("Publish %s failed for plugin_loaded", attr)
+            # Best-effort publish; don't fail the operation on publish errors
+            await self._safe_publish(
+                "plugin_loaded",
+                {"instance_id": instance_id, "uri": uri, "name": instance.name},
+            )
 
             logger.info("Loaded plugin %s as %s", uri, instance_id)
 
@@ -207,19 +228,9 @@ class PluginManager:
             del self.instances[instance_id]
 
             # Publish event (support service bus API compatibility)
-            if self.service_bus:
-                for attr in ("publish_event", "publish"):
-                    publisher = getattr(self.service_bus, attr, None)
-                    if publisher and callable(publisher):
-                        try:
-                            result = publisher(
-                                "plugin_unloaded",
-                                {"instance_id": instance_id, "uri": instance.uri},
-                            )
-                            if hasattr(result, "__await__"):
-                                await result
-                        except Exception:
-                            logger.debug("Publish %s failed for plugin_unloaded", attr)
+            await self._safe_publish(
+                "plugin_unloaded", {"instance_id": instance_id, "uri": instance.uri}
+            )
 
             logger.info("Unloaded plugin %s", instance_id)
 
@@ -243,23 +254,10 @@ class PluginManager:
         instance.parameters[parameter] = value
 
         # Publish event (support service bus API compatibility)
-        if self.service_bus:
-            for attr in ("publish_event", "publish"):
-                publisher = getattr(self.service_bus, attr, None)
-                if publisher and callable(publisher):
-                    try:
-                        result = publisher(
-                            "parameter_changed",
-                            {
-                                "instance_id": instance_id,
-                                "parameter": parameter,
-                                "value": value,
-                            },
-                        )
-                        if hasattr(result, "__await__"):
-                            await result
-                    except Exception:
-                        logger.debug("Publish %s failed for parameter_changed", attr)
+        await self._safe_publish(
+            "parameter_changed",
+            {"instance_id": instance_id, "parameter": parameter, "value": value},
+        )
 
         logger.debug("Set parameter %s.%s = %s", instance_id, parameter, value)
 

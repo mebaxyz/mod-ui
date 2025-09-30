@@ -13,6 +13,9 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# Localized pylint - this module intentionally has several broad except handlers
+# pylint: disable=broad-except
+
 
 @dataclass
 class Connection:
@@ -227,7 +230,7 @@ class SessionManager:
             }
 
     async def save_pedalboard(self) -> Dict[str, Any]:
-        """Save current pedalboard state"""
+        """Save current pedalboard state (persist to disk)."""
         if not self.current_pedalboard:
             raise ValueError("No pedalboard currently loaded")
 
@@ -243,6 +246,17 @@ class SessionManager:
         self.current_pedalboard.plugins = current_plugins
         self.current_pedalboard.connections = self.connections
 
+        # Persist to disk
+        try:
+            # Lazy import to avoid cycles in tests
+            from mod_ui.services.audio_processing import storage
+
+            pb_dict = self._serialize_pedalboard(self.current_pedalboard)
+            pb_id, path = storage.save_pedalboard(pb_dict)
+        except Exception as e:
+            logger.error("Failed to persist pedalboard: %s", e)
+            raise
+
         # Publish event
         if self.service_bus:
             await self.service_bus.publish_event(
@@ -250,14 +264,17 @@ class SessionManager:
                 {
                     "id": self.current_pedalboard.id,
                     "name": self.current_pedalboard.name,
+                    "saved_path": path,
                 },
             )
 
-        logger.info("Saved pedalboard: %s", self.current_pedalboard.name)
+        logger.info("Saved pedalboard: %s -> %s", self.current_pedalboard.name, path)
 
         return {
             "status": "ok",
             "pedalboard": self._serialize_pedalboard(self.current_pedalboard),
+            "saved_id": pb_id,
+            "saved_path": path,
         }
 
     async def get_current_pedalboard(self) -> Dict[str, Any]:
@@ -387,8 +404,8 @@ class SessionManager:
         }
 
         # Capture current parameter values
-        for instance_id, instance in self.plugin_manager.instances.items():
-            snapshot["plugin_states"][instance_id] = instance.parameters.copy()
+        for inst_id, instance in self.plugin_manager.instances.items():
+            snapshot["plugin_states"][inst_id] = instance.parameters.copy()
 
         logger.info("Created snapshot: %s", name)
 
