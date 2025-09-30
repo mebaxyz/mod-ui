@@ -31,7 +31,9 @@ from .models import (  # JACK and LV2 models
     DisconnectAllJackPortsCommand,
     DisconnectJackPortsCommand,
     DisconnectPortsCommand,
+    GetHardwarePortsCommand,
     GetPluginInfoCommand,
+    HardwarePort,
     JackConnectionInfo,
     JackData,
     JackPortInfo,
@@ -77,6 +79,10 @@ class AudioEngineService:
 
         # Initialize JACK data in state
         await self._update_jack_state()
+
+        # Initialize hardware ports
+        if success:
+            await self.get_hardware_ports()
 
         return success
 
@@ -271,6 +277,119 @@ class AudioEngineService:
 
         logger.info("Disconnected %s -> %s", command.from_port, command.to_port)
         return True
+
+    # Hardware Ports
+    async def get_hardware_ports(
+        self, command: GetHardwarePortsCommand = None
+    ) -> List[HardwarePort]:
+        """Get hardware ports from JACK"""
+        if command is None:
+            command = GetHardwarePortsCommand()
+
+        hardware_ports = []
+
+        if command.include_audio:
+            # Get audio input ports (system:capture_*)
+            audio_inputs = self.jack_manager.get_hardware_ports(
+                is_audio=True, is_output=False
+            )
+            for i, port_info in enumerate(audio_inputs):
+                if port_info.name.startswith("system:capture_"):
+                    # Extract port number from system:capture_1, system:capture_2, etc.
+                    port_num = port_info.name.split("_")[-1]
+                    hardware_ports.append(
+                        HardwarePort(
+                            instance=f"/graph/capture_{port_num}",
+                            port_type="audio",
+                            is_output=False,  # Input ports show on right side
+                            display_name=f"Input_{port_num}",
+                            index=i,
+                            jack_port_name=port_info.name,
+                        )
+                    )
+
+            # Get audio output ports (system:playback_*)
+            audio_outputs = self.jack_manager.get_hardware_ports(
+                is_audio=True, is_output=True
+            )
+            for i, port_info in enumerate(audio_outputs):
+                if port_info.name.startswith("system:playback_"):
+                    # Extract port number from system:playback_1, system:playbook_2, etc.
+                    port_num = port_info.name.split("_")[-1]
+                    hardware_ports.append(
+                        HardwarePort(
+                            instance=f"/graph/playback_{port_num}",
+                            port_type="audio",
+                            is_output=True,  # Output ports show on left side
+                            display_name=f"Output_{port_num}",
+                            index=i,
+                            jack_port_name=port_info.name,
+                        )
+                    )
+
+        if command.include_midi:
+            # Get MIDI input ports
+            midi_inputs = self.jack_manager.get_hardware_ports(
+                is_audio=False, is_output=False
+            )
+            for i, port_info in enumerate(midi_inputs):
+                if port_info.name.startswith("system:midi_"):
+                    port_name = port_info.name.replace("system:", "").replace(":", "_")
+                    hardware_ports.append(
+                        HardwarePort(
+                            instance=f"/graph/{port_name}",
+                            port_type="midi",
+                            is_output=False,
+                            display_name=f"MIDI_In_{i+1}",
+                            index=i,
+                            jack_port_name=port_info.name,
+                        )
+                    )
+
+            # Get MIDI output ports
+            midi_outputs = self.jack_manager.get_hardware_ports(
+                is_audio=False, is_output=True
+            )
+            for i, port_info in enumerate(midi_outputs):
+                if port_info.name.startswith("system:midi_"):
+                    port_name = port_info.name.replace("system:", "").replace(":", "_")
+                    hardware_ports.append(
+                        HardwarePort(
+                            instance=f"/graph/{port_name}",
+                            port_type="midi",
+                            is_output=True,
+                            display_name=f"MIDI_Out_{i+1}",
+                            index=i,
+                            jack_port_name=port_info.name,
+                        )
+                    )
+
+        # Update state
+        self.state.hardware_ports = hardware_ports
+
+        logger.info(f"Detected {len(hardware_ports)} hardware ports")
+        return hardware_ports
+
+    async def refresh_hardware_ports(self) -> List[HardwarePort]:
+        """Refresh hardware port detection and notify subscribers"""
+        old_ports = self.state.hardware_ports.copy()
+        new_ports = await self.get_hardware_ports()
+
+        # Check if ports changed
+        if old_ports != new_ports:
+            logger.info("Hardware ports changed, publishing event")
+            await self._publish_hardware_ports_changed(new_ports)
+
+        return new_ports
+
+    async def _publish_hardware_ports_changed(self, ports: List[HardwarePort]):
+        """Publish hardware ports changed event"""
+        # Convert to dict for JSON serialization
+        ports_data = [port.dict() for port in ports]
+
+        # TODO: Use ServiceBus to publish event
+        # For now just log the event
+        logger.info(f"Hardware ports changed: {len(ports)} ports detected")
 
     # Transport Control
     async def set_transport(self, command: SetTransportCommand) -> TransportState:

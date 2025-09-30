@@ -11,6 +11,7 @@ from .client import ServiceClient, TypedServiceClient, service_client
 from .config import CommConfig, get_config, get_redis_url_from_env, set_config
 from .discovery import ServiceDiscovery, ServiceLoadBalancer
 from .events import EventBus, EventPublisher, EventSubscriber
+from .gateway import GatewayService, create_gateway_service, gateway_service
 from .metrics import HealthMonitor, MetricsCollector
 from .models import (
     RequestMetrics,
@@ -21,6 +22,7 @@ from .models import (
     ServiceRequest,
     ServiceResponse,
 )
+from .resilient import ResilientServiceBus, create_resilient_service
 from .server import ServiceServer, ServiceServerBuilder, event_handler, handler
 from .service import Service, create_service, temporary_service
 
@@ -30,6 +32,13 @@ __all__ = [
     "Service",
     "create_service",
     "temporary_service",
+    # Resilient service class (auto-reconnecting, recommended for production)
+    "ResilientServiceBus",
+    "create_resilient_service",
+    # Gateway service class (for HTTP/WebSocket gateways)
+    "GatewayService",
+    "gateway_service",
+    "create_gateway_service",
     # Core components (for advanced usage)
     "ServiceClient",
     "ServiceServer",

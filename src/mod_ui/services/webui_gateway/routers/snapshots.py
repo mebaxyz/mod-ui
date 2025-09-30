@@ -5,9 +5,10 @@ Handles pedalboard snapshot management for the WebSocket Gateway.
 """
 
 import logging
+import os
 from typing import Any, Dict
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 logger = logging.getLogger(__name__)
 
@@ -47,14 +48,20 @@ async def save_snapshot() -> Dict[str, Any]:
 
 
 @router.get("/saveas")
-async def save_snapshot_as(title: str) -> Dict[str, Any]:
+async def save_snapshot_as(title: str, request: Request) -> Dict[str, Any]:
     """Save the current state as a new snapshot"""
     try:
         # In production, this would create a new snapshot
         new_id = max(MOCK_SNAPSHOTS.keys()) + 1
         MOCK_SNAPSHOTS[new_id] = {"name": title, "id": new_id}
 
-        return {"ok": True, "id": new_id, "title": title}
+        result = {"ok": True, "id": new_id, "title": title}
+
+        # Broadcast snapshot save via WebSocket
+        if result.get("ok"):
+            await _notify_snapshot_save(request, new_id, title)
+
+        return result
     except Exception as e:
         logger.error(f"Failed to save snapshot as '{title}': {e}")
         raise HTTPException(status_code=500, detail="Failed to save snapshot")
@@ -104,16 +111,80 @@ async def list_snapshots() -> Any:
 
 
 @router.get("/load")
-async def load_snapshot(id: int) -> Dict[str, Any]:
+async def load_snapshot(id: int, request: Request) -> Dict[str, Any]:
     """Load a specific snapshot"""
     try:
         if id not in MOCK_SNAPSHOTS:
             raise HTTPException(status_code=404, detail="Snapshot not found")
 
+        snapshot = MOCK_SNAPSHOTS[id]
+
         # In production, this would load the snapshot
-        return {"ok": True}
+        result = {"ok": True}
+
+        # Broadcast snapshot load via WebSocket
+        if result.get("ok"):
+            await _notify_snapshot_load(request, id, snapshot["name"])
+
+        return result
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to load snapshot {id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to load snapshot")
+
+
+async def _notify_snapshot_load(request: Request, snapshot_id: int, snapshot_name: str):
+    """Notify webui-gateway to broadcast snapshot load WebSocket message via ServiceBus"""
+    try:
+        # WebSocket message format expected by frontend: "pedal_snapshot {index} {name}"
+        websocket_message = f"pedal_snapshot {snapshot_id} {snapshot_name}"
+
+        # Get service instance from app state
+        service = request.app.state.service
+
+        # Publish ServiceBus event for WebSocket broadcasting
+        await service.publish_event(
+            "websocket_broadcast",
+            {
+                "type": "legacy_websocket",
+                "content": websocket_message,
+                "message_type": "snapshot_load",
+                "snapshot_id": snapshot_id,
+                "snapshot_name": snapshot_name,
+            },
+        )
+
+        logger.info(f"Published snapshot load event: {snapshot_id}/{snapshot_name}")
+
+    except Exception as e:
+        logger.error(f"Error publishing snapshot load event: {e}")
+        # Don't re-raise - WebSocket notification failure shouldn't break the main operation
+
+
+async def _notify_snapshot_save(request: Request, snapshot_id: int, snapshot_name: str):
+    """Notify webui-gateway to broadcast snapshot save WebSocket message via ServiceBus"""
+    try:
+        # Custom WebSocket message format for snapshot save notification
+        websocket_message = f"snapshot_saved {snapshot_id} {snapshot_name}"
+
+        # Get service instance from app state
+        service = request.app.state.service
+
+        # Publish ServiceBus event for WebSocket broadcasting
+        await service.publish_event(
+            "websocket_broadcast",
+            {
+                "type": "legacy_websocket",
+                "content": websocket_message,
+                "message_type": "snapshot_save",
+                "snapshot_id": snapshot_id,
+                "snapshot_name": snapshot_name,
+            },
+        )
+
+        logger.info(f"Published snapshot save event: {snapshot_id}/{snapshot_name}")
+
+    except Exception as e:
+        logger.error(f"Error publishing snapshot save event: {e}")
+        # Don't re-raise - WebSocket notification failure shouldn't break the main operation

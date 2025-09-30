@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Hardware Ports Debug</title>
+    <style>
+        .hardware-input, .hardware-output { 
+            border: 2px solid red; 
+            margin: 5px; 
+            padding: 10px; 
+            display: block;
+        }
+        .mod-audio-input { 
+            background-color: lightblue; 
+            border: 2px solid blue;
+        }
+        .mod-audio-output { 
+            background-color: lightgreen; 
+            border: 2px solid green;
+        }
+        #debug-info {
+            background: #f0f0f0;
+            padding: 10px;
+            margin: 10px;
+            border: 1px solid #ccc;
+        }
+    </style>
+</head>
+<body>
+    <h1>Hardware Ports Debug</h1>
+    <div id="debug-info">
+        <h2>Debug Information</h2>
+        <div id="hardware-elements-count"></div>
+        <div id="websocket-status"></div>
+        <div id="messages-log"></div>
+    </div>
+    
+    <h2>Hardware Elements</h2>
+    <div id="hardware-container">
+        <!-- Hardware elements will appear here -->
+    </div>
+
+    <script src="js/jquery-3.6.0.min.js"></script>
+    <script>
+        let ws = null;
+        let messageCount = 0;
+        let messagesLog = [];
+
+        function updateDebugInfo() {
+            const hardwareElements = document.querySelectorAll('.hardware-input, .hardware-output, .mod-audio-input, .mod-audio-output');
+            document.getElementById('hardware-elements-count').innerHTML = 
+                `Hardware elements found: ${hardwareElements.length}<br>` +
+                `- hardware-input: ${document.querySelectorAll('.hardware-input').length}<br>` +
+                `- hardware-output: ${document.querySelectorAll('.hardware-output').length}<br>` +
+                `- mod-audio-input: ${document.querySelectorAll('.mod-audio-input').length}<br>` +
+                `- mod-audio-output: ${document.querySelectorAll('.mod-audio-output').length}`;
+
+            // List all hardware elements
+            let elementsHtml = '<h3>All Hardware Elements:</h3>';
+            hardwareElements.forEach((el, index) => {
+                elementsHtml += `<div>Element ${index + 1}: ID="${el.id}", Classes="${el.className}", Title="${el.title}"</div>`;
+            });
+            document.getElementById('hardware-container').innerHTML = elementsHtml;
+        }
+
+        function connectWebSocket() {
+            const wsUrl = `ws://localhost:8081/ws`;
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = function() {
+                console.log('WebSocket connected');
+                document.getElementById('websocket-status').innerHTML = 'WebSocket: Connected';
+            };
+            
+            ws.onmessage = function(event) {
+                messageCount++;
+                const message = event.data;
+                console.log('WebSocket message:', message);
+                messagesLog.push(`${messageCount}: ${message}`);
+                
+                // Keep only last 10 messages
+                if (messagesLog.length > 10) {
+                    messagesLog.shift();
+                }
+                
+                document.getElementById('messages-log').innerHTML = 
+                    '<h3>Recent WebSocket Messages:</h3>' + 
+                    messagesLog.map(msg => `<div>${msg}</div>`).join('');
+                
+                // Process add_hw_port messages
+                if (message.startsWith('add_hw_port ')) {
+                    const parts = message.split(' ');
+                    const instance = parts[1];
+                    const type = parts[2];
+                    const isOutput = parseInt(parts[3]);
+                    const name = parts[4];
+                    const index = parseInt(parts[5] || '0');
+                    
+                    console.log('Processing add_hw_port:', {instance, type, isOutput, name, index});
+                    
+                    // Create hardware element similar to host.js
+                    const className = isOutput ? 
+                        'hardware-input mod-audio-input' : 
+                        'hardware-output mod-audio-output';
+                    
+                    const el = $('<div id="' + instance + '" class="' + className + '" mod-port-index=' + index + ' title="Hardware ' + name + '">Hardware Port: ' + name + '</div>');
+                    $('#hardware-container').append(el);
+                    
+                    updateDebugInfo();
+                }
+            };
+            
+            ws.onclose = function() {
+                console.log('WebSocket disconnected');
+                document.getElementById('websocket-status').innerHTML = 'WebSocket: Disconnected';
+            };
+            
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                document.getElementById('websocket-status').innerHTML = 'WebSocket: Error';
+            };
+        }
+
+        // Connect when page loads
+        window.onload = function() {
+            connectWebSocket();
+            updateDebugInfo();
+        };
+    </script>
+</body>
+</html>

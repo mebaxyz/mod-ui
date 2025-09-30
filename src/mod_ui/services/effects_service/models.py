@@ -144,8 +144,8 @@ class EffectPresetLoadRequest(BaseModel):
     """Request to load effect preset"""
 
     instance: str
-    uri: str
-    bundle: str
+    preset_uri: str
+    bundle: Optional[str] = None
 
 
 class EffectPresetLoadResponse(BaseModel):
@@ -159,9 +159,10 @@ class EffectPresetSaveRequest(BaseModel):
     """Request to save effect preset"""
 
     instance: str
-    uri: str
-    bundle: str
-    label: str
+    name: str
+    uri: Optional[str] = None
+    bundle: Optional[str] = None
+    label: Optional[str] = None
     replace: bool = False
 
 

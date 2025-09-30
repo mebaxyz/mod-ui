@@ -1,33 +1,25 @@
 """
-MOD UI WebUI Gateway - Enhanced with Auto-Reconnecting ServiceBus
+Resilient ServiceBus - Auto-reconnecting, self-healing ServiceBus wrapper
 
-This provides exactly what you wanted:
-1. Define connection once ✅
-2. Define topics and handlers ✅
-3. Everything else automatic ✅
+This provides the simple interface you want:
+1. Define connection once
+2. Define topics and handlers
+3. Everything else is handled automatically (reconnection, health checks, etc.)
 """
 
 import asyncio
 import logging
-import os
 import time
-from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any, Awaitable, Callable, Dict, Optional
 
-# Import ServiceBus components
 import redis.asyncio as redis
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 from redis.exceptions import ConnectionError, RedisError, TimeoutError
-from servicebus import Service, ServiceEvent, get_config
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+from .config import get_config
+from .models import ServiceEvent
+from .service import Service
+
 logger = logging.getLogger(__name__)
 
 
@@ -71,7 +63,13 @@ class ResilientServiceBus:
     def on_event(
         self, event_type: str, handler: Callable[[ServiceEvent], Awaitable[None]]
     ) -> None:
-        """Register an event handler - SIMPLE INTERFACE"""
+        """
+        Register an event handler - SIMPLE INTERFACE
+
+        Args:
+            event_type: Type of event to listen for (e.g., "websocket_broadcast")
+            handler: Async function to handle the event
+        """
         self._event_handlers[event_type] = handler
         logger.info(f"Registered handler for event type '{event_type}'")
 
@@ -88,7 +86,10 @@ class ResilientServiceBus:
                 )
 
     async def start(self) -> None:
-        """Start the resilient ServiceBus - SIMPLE INTERFACE"""
+        """
+        Start the resilient ServiceBus - SIMPLE INTERFACE
+        All reconnection, health checks, etc. happen automatically
+        """
         if self._is_running:
             logger.warning(
                 f"ResilientServiceBus for '{self.service_name}' is already running"
@@ -139,7 +140,12 @@ class ResilientServiceBus:
         logger.info(f"ResilientServiceBus for '{self.service_name}' stopped")
 
     async def publish_event(self, event_type: str, data: Dict[str, Any]) -> bool:
-        """Publish an event - handles connection issues automatically"""
+        """
+        Publish an event - handles connection issues automatically
+
+        Returns:
+            bool: True if published successfully, False if failed
+        """
         if not self._current_service:
             logger.warning(
                 f"Cannot publish event '{event_type}' - no active connection"
@@ -158,7 +164,12 @@ class ResilientServiceBus:
     async def call_service(
         self, service_name: str, method: str, *args, **kwargs
     ) -> Any:
-        """Call another service - handles connection issues automatically"""
+        """
+        Call another service - handles connection issues automatically
+
+        Returns:
+            Result of the service call, or raises exception if failed
+        """
         if not self._current_service:
             raise RuntimeError("No active ServiceBus connection")
 
@@ -339,254 +350,41 @@ class ResilientServiceBus:
                 await asyncio.sleep(10)
 
 
-# ENHANCED GLOBALS - Just what we need
-resilient_bus: Optional[ResilientServiceBus] = None
-connection_manager: Optional["ConnectionManager"] = None
+# Convenience function for the simple interface you want
+async def create_resilient_service(
+    service_name: str,
+    event_handlers: Dict[str, Callable[[ServiceEvent], Awaitable[None]]] = None,
+    redis_url: Optional[str] = None,
+) -> ResilientServiceBus:
+    """
+    Create and start a resilient ServiceBus with the simple interface
 
+    Args:
+        service_name: Name of your service
+        event_handlers: Dict of event_type -> handler function
+        redis_url: Redis connection URL (optional)
 
-class ConnectionManager:
-    """Simple WebSocket connection manager"""
+    Returns:
+        Started ResilientServiceBus instance
 
-    def __init__(self):
-        self.active_connections: list[WebSocket] = []
-        self.logger = logging.getLogger(f"{__name__}.ConnectionManager")
+    Example:
+        async def handle_websocket_msg(event):
+            print(f"Got message: {event.data}")
 
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-        self.logger.info(f"WebSocket connected. Total: {len(self.active_connections)}")
+        bus = await create_resilient_service(
+            "webui_gateway",
+            {"websocket_broadcast": handle_websocket_msg}
+        )
+        # That's it! Everything else is automatic
+    """
+    bus = ResilientServiceBus(service_name, redis_url)
 
-    def disconnect(self, websocket: WebSocket):
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
-            self.logger.info(
-                f"WebSocket disconnected. Total: {len(self.active_connections)}"
-            )
+    # Register event handlers
+    if event_handlers:
+        for event_type, handler in event_handlers.items():
+            bus.on_event(event_type, handler)
 
-    async def broadcast_event(self, event_type: str, data: dict):
-        if not self.active_connections:
-            return
+    # Start it
+    await bus.start()
 
-        message = {
-            "event_type": event_type,
-            "data": data,
-            "timestamp": asyncio.get_event_loop().time(),
-        }
-
-        disconnected = []
-        for connection in self.active_connections:
-            try:
-                await connection.send_json(message)
-            except Exception as e:
-                self.logger.error(f"WebSocket send error: {e}")
-                disconnected.append(connection)
-
-        for connection in disconnected:
-            self.disconnect(connection)
-
-        if self.active_connections:
-            self.logger.info(
-                f"Broadcasted {event_type} to {len(self.active_connections)} clients"
-            )
-
-
-# Create connection manager
-connection_manager = ConnectionManager()
-
-
-# SUPER SIMPLE EVENT HANDLER - This is all you need to define!
-async def handle_websocket_broadcast(event):
-    """Handle websocket_broadcast events - SUPER SIMPLE!"""
-    try:
-        logger.info(f"📡 Received: {event.event_type}")
-
-        # Extract data
-        event_data = event.data
-        message = event_data.get("content", "")
-        message_type = event_data.get("message_type", "unknown")
-
-        # Broadcast to WebSocket clients
-        if connection_manager and message:
-            await connection_manager.broadcast_event("websocket_message", event_data)
-            logger.info(f"✅ Broadcasted {message_type}: {message}")
-
-    except Exception as e:
-        logger.error(f"❌ Error handling websocket broadcast: {e}")
-
-
-async def initialize_enhanced_servicebus():
-    """ENHANCED ServiceBus initialization - This is ALL you need!"""
-    global resilient_bus
-
-    try:
-        logger.info("🚀 Initializing ENHANCED ServiceBus with auto-reconnection...")
-
-        # 1️⃣ DEFINE CONNECTION ONCE
-        resilient_bus = ResilientServiceBus("webui_gateway")
-
-        # 2️⃣ DEFINE TOPICS AND HANDLERS
-        resilient_bus.on_event("websocket_broadcast", handle_websocket_broadcast)
-
-        # 3️⃣ START - EVERYTHING ELSE IS AUTOMATIC!
-        await resilient_bus.start()
-
-        # Store in app state for endpoints
-        app.state.resilient_bus = resilient_bus
-
-        logger.info("🎉 ENHANCED ServiceBus ready! Auto-reconnection active!")
-
-    except Exception as e:
-        logger.error(f"❌ ServiceBus initialization failed: {e}")
-        import traceback
-
-        traceback.print_exc()
-        resilient_bus = None
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """MINIMAL lifespan - no complex stuff!"""
-    logger.info("🌟 Starting WebUI Gateway with ENHANCED ServiceBus...")
-
-    # Schedule enhanced initialization
-    asyncio.create_task(initialize_enhanced_servicebus())
-
-    yield
-
-    # Simple cleanup
-    if resilient_bus:
-        await resilient_bus.stop()
-        logger.info("🛑 ENHANCED ServiceBus stopped")
-
-
-# FastAPI app
-app = FastAPI(
-    title="MOD UI WebUI Gateway - ENHANCED",
-    description="WebUI Gateway with auto-reconnecting ServiceBus (integrated)",
-    version="3.0.0",
-    lifespan=lifespan,
-)
-
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Static files
-static_dir = "/app/html"
-if os.path.exists(static_dir):
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
-
-
-@app.get("/")
-async def read_root():
-    return {
-        "message": "MOD UI WebUI Gateway - ENHANCED with auto-reconnecting ServiceBus"
-    }
-
-
-@app.get("/test")
-async def test_endpoint():
-    return {"status": "ok", "message": "HTTP server working with ENHANCED ServiceBus!"}
-
-
-@app.get("/health")
-async def health_check():
-    """Health check with ResilientServiceBus info"""
-    servicebus_info = {"status": "disconnected"}
-
-    if resilient_bus:
-        info = resilient_bus.connection_info
-        servicebus_info = {
-            "status": "connected" if info["is_connected"] else "disconnected",
-            "connection_failures": info["connection_failures"],
-            "registered_events": info["registered_events"],
-            "auto_reconnection": "enabled ✅",
-            "last_connection": info["last_connection_time"],
-            "version": "enhanced_integrated",
-        }
-
-    return {
-        "status": "healthy",
-        "servicebus": servicebus_info,
-        "websocket_connections": len(connection_manager.active_connections),
-        "version": "ENHANCED",
-    }
-
-
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket endpoint"""
-    await connection_manager.connect(websocket)
-    try:
-        while True:
-            data = await websocket.receive_text()
-            logger.info(f"📨 WebSocket message: {data}")
-            await connection_manager.broadcast_event(
-                "echo", {"message": f"Echo: {data}"}
-            )
-    except WebSocketDisconnect:
-        connection_manager.disconnect(websocket)
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}")
-        connection_manager.disconnect(websocket)
-
-
-@app.post("/api/broadcast")
-async def broadcast_message(message_data: dict):
-    """Broadcast messages - SUPER SIMPLE!"""
-    try:
-        # Local broadcast
-        await connection_manager.broadcast_event("broadcast_message", message_data)
-
-        # ServiceBus broadcast - ENHANCED CALL!
-        if resilient_bus:
-            success = await resilient_bus.publish_event(
-                "websocket_broadcast", message_data
-            )
-            status = "✅ sent" if success else "⚠️ failed (will auto-retry)"
-        else:
-            status = "❌ no connection"
-
-        return {
-            "success": True,
-            "message": "Message broadcasted",
-            "servicebus_status": status,
-        }
-
-    except Exception as e:
-        logger.error(f"Broadcast error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/service/{service_name}/call")
-async def call_service(service_name: str, request_data: dict):
-    """Call other services - SUPER SIMPLE!"""
-    if not resilient_bus:
-        raise HTTPException(status_code=503, detail="ServiceBus not available")
-
-    try:
-        method = request_data.get("method")
-        args = request_data.get("args", [])
-        kwargs = request_data.get("kwargs", {})
-
-        if not method:
-            raise HTTPException(status_code=400, detail="Method required")
-
-        # ENHANCED SERVICE CALL!
-        result = await resilient_bus.call_service(service_name, method, *args, **kwargs)
-        return {"success": True, "result": result}
-
-    except Exception as e:
-        logger.error(f"Service call error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host="0.0.0.0", port=8081)
+    return bus

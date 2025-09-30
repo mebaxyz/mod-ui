@@ -1,2 +1,3 @@
 redis
 pydantic
+requests>=2.31.0

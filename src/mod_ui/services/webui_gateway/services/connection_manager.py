@@ -49,7 +49,10 @@ class ConnectionManager:
         self.last_cleanup = time.time()
 
         # Heartbeat tracking
-        self.heartbeat_task: Optional[asyncio.Task] = None
+        self.heartbeat_task = None
+
+        # Hardware ports state (from audio engine)
+        self.hardware_ports: List[Dict[str, Any]] = []
 
     async def connect(
         self, websocket: WebSocket, client_id: Optional[str] = None
@@ -591,10 +594,73 @@ class ConnectionManager:
         # Send truebypass state (both off)
         await self.send_to_client(client_id, "truebypass 0 0")
 
+        # Send hardware ports from stored state
+        await self._send_hardware_ports_to_client(client_id)
+
         # Send loading_end message to finish initialization
         await self.send_to_client(client_id, "loading_end 0")  # snapshot_id=0
 
         logger.info(f"Sent initialization sequence to client {client_id}")
+
+    async def request_hardware_ports_from_audio_engine(self):
+        """Request hardware ports from audio engine service"""
+        try:
+            # TODO: Use ServiceBus to request hardware ports from audio-engine service
+            # For now, simulate the request with default ports
+            self.hardware_ports = [
+                {
+                    "instance": "/graph/capture_1",
+                    "port_type": "audio",
+                    "is_output": False,
+                    "display_name": "Input_1",
+                    "index": 0,
+                    "jack_port_name": "system:capture_1",
+                },
+                {
+                    "instance": "/graph/capture_2",
+                    "port_type": "audio",
+                    "is_output": False,
+                    "display_name": "Input_2",
+                    "index": 1,
+                    "jack_port_name": "system:capture_2",
+                },
+                {
+                    "instance": "/graph/playback_1",
+                    "port_type": "audio",
+                    "is_output": True,
+                    "display_name": "Output_1",
+                    "index": 0,
+                    "jack_port_name": "system:playback_1",
+                },
+                {
+                    "instance": "/graph/playback_2",
+                    "port_type": "audio",
+                    "is_output": True,
+                    "display_name": "Output_2",
+                    "index": 1,
+                    "jack_port_name": "system:playback_2",
+                },
+            ]
+            logger.info(f"Updated hardware ports: {len(self.hardware_ports)} ports")
+        except Exception as e:
+            logger.error(f"Failed to request hardware ports from audio engine: {e}")
+
+    async def _send_hardware_ports_to_client(self, client_id: str):
+        """Send hardware port add_hw_port messages to a specific client"""
+        for port in self.hardware_ports:
+            # Format: add_hw_port <instance> <type> <isOutput> <name> <index>
+            # JavaScript logic: var isOutput = parseInt(data[2]) == 0; // reversed
+            # This means:
+            # - Message isOutput=0 → JS isOutput=true → LEFT side (hardware outputs)
+            # - Message isOutput=1 → JS isOutput=false → RIGHT side (hardware inputs)
+            #
+            # So for proper display:
+            # - System outputs (playback_*) should use message isOutput=0 → LEFT side
+            # - System inputs (capture_*) should use message isOutput=1 → RIGHT side
+            is_output = 0 if port["is_output"] else 1
+            message = f"add_hw_port {port['instance']} {port['port_type']} {is_output} {port['display_name']} {port['index']}"
+            logger.info(f"Sending hardware port message to {client_id}: {message}")
+            await self.send_to_client(client_id, message)
 
     async def _remove_all_subscriptions(self, client_id: str):
         """Remove all subscriptions for a client"""

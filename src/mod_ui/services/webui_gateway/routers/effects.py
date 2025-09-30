@@ -7,10 +7,9 @@ import logging
 import os
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException, Path, Query, Response
+from fastapi import APIRouter, HTTPException, Path, Query, Request, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-
 from servicebus import CommConfig, ServiceClient, set_config
 
 
@@ -31,6 +30,15 @@ def get_configured_service_client() -> ServiceClient:
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/effect", tags=["effects"])
+
+# Dependency injection
+_service_client: Optional[ServiceClient] = None
+
+
+def inject_service_client(service_client: ServiceClient):
+    """Inject service client dependency"""
+    global _service_client
+    _service_client = service_client
 
 
 class EffectAddRequestBody(BaseModel):
@@ -155,6 +163,118 @@ async def get_effect(uri: str = Query(..., description="Plugin URI")):
 
     except Exception as e:
         logger.error(f"Get effect error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/connect/{ports:path}")
+async def connect_ports(
+    request: Request,
+    ports: str = Path(
+        ..., description="Comma-separated port connection: from_port,to_port"
+    ),
+):
+    """Connect two ports (hardware or effect ports)"""
+    try:
+        if not _service_client:
+            raise HTTPException(status_code=503, detail="Service client not available")
+
+        # Parse the ports parameter
+        port_parts = ports.split(",")
+        if len(port_parts) != 2:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid port format. Expected: from_port,to_port",
+            )
+
+        from_port = port_parts[0].strip()
+        to_port = port_parts[1].strip()
+
+        request_data = {
+            "from_port": from_port,
+            "to_port": to_port,
+        }
+
+        response = await _service_client.call(
+            target_service="audio-engine",
+            request_type="connect_ports",
+            data=request_data,
+        )
+
+        if response and response.get("success"):
+            # Send WebSocket notification for connection
+            try:
+                await _notify_connection_change(request, "connect", from_port, to_port)
+            except Exception as notify_error:
+                logger.warning(f"Failed to notify connection: {notify_error}")
+
+            return response
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=response.get("error", "Connect ports failed"),
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Connect ports error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/disconnect/{ports:path}")
+async def disconnect_ports(
+    request: Request,
+    ports: str = Path(
+        ..., description="Comma-separated port disconnection: from_port,to_port"
+    ),
+):
+    """Disconnect two ports (hardware or effect ports)"""
+    try:
+        if not _service_client:
+            raise HTTPException(status_code=503, detail="Service client not available")
+
+        # Parse the ports parameter
+        port_parts = ports.split(",")
+        if len(port_parts) != 2:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid port format. Expected: from_port,to_port",
+            )
+
+        from_port = port_parts[0].strip()
+        to_port = port_parts[1].strip()
+
+        request_data = {
+            "from_port": from_port,
+            "to_port": to_port,
+        }
+
+        response = await _service_client.call(
+            target_service="audio-engine",
+            request_type="disconnect_ports",
+            data=request_data,
+        )
+
+        if response and response.get("success"):
+            # Send WebSocket notification for disconnection
+            try:
+                await _notify_connection_change(
+                    request, "disconnect", from_port, to_port
+                )
+            except Exception as notify_error:
+                logger.warning(f"Failed to notify disconnection: {notify_error}")
+
+            return response
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=response.get("error", "Disconnect ports failed"),
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Disconnect ports error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -442,3 +562,34 @@ async def get_effect_file(
     except Exception as e:
         logger.error(f"Get effect file error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+async def _notify_connection_change(
+    request: Request, action: str, from_port: str, to_port: str
+):
+    """Notify clients of connection changes via WebSocket using ServiceBus"""
+    try:
+        # WebSocket message format expected by frontend: "connect {source} {target}" or "disconnect {source} {target}"
+        websocket_message = f"{action} {from_port} {to_port}"
+
+        # Get service instance from app state
+        service = request.app.state.service
+
+        # Publish ServiceBus event for WebSocket broadcasting
+        await service.publish_event(
+            "websocket_broadcast",
+            {
+                "type": "legacy_websocket",
+                "content": websocket_message,
+                "message_type": f"port_{action}",
+                "action": action,
+                "from_port": from_port,
+                "to_port": to_port,
+            },
+        )
+
+        logger.info(f"Published {action} event: {from_port} -> {to_port}")
+
+    except Exception as e:
+        logger.error(f"Error publishing {action} event: {e}")
+        # Don't re-raise - WebSocket notification failure shouldn't break the main operation

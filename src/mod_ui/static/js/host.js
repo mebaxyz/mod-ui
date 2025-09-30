@@ -504,7 +504,17 @@ $("document").ready(function () {
       var name = data[3].replace(/_/g, " ");
       var index = parseInt(data[4]);
 
+      console.log("DEBUG add_hw_port:", {
+        instance: instance,
+        type: type,
+        rawIsOutput: data[2],
+        isOutput: isOutput,
+        name: name,
+        index: index,
+      });
+
       if (isOutput) {
+        console.log("DEBUG: Adding hardware OUTPUT:", instance, name);
         var el = $(
           '<div id="' +
             instance +
@@ -519,6 +529,7 @@ $("document").ready(function () {
           desktop.hardwareManager.addCvOutputPort("/cv" + instance, name, "+");
         }
       } else {
+        console.log("DEBUG: Adding hardware INPUT:", instance, name);
         var prefix = name === "MIDI Loopback" ? "Virtual" : "Hardware";
         var el = $(
           '<div id="' +

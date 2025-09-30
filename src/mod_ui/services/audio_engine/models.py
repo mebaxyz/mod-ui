@@ -49,6 +49,19 @@ class AudioPortInfo(BaseModel):
     name: str
     direction: str  # "input" or "output"
     type: str  # "audio", "cv", "midi", "atom"
+
+
+class HardwarePort(BaseModel):
+    """Represents a hardware audio/MIDI port"""
+
+    instance: str  # e.g., "system:capture_1", "/graph/capture_1"
+    port_type: str  # "audio", "midi", "cv"
+    is_output: (
+        bool  # True if output port (shows on left), False if input (shows on right)
+    )
+    display_name: str  # Human-readable name like "Input_1", "Output_1"
+    index: int  # Port index for ordering
+    jack_port_name: str  # Original JACK port name like "system:capture_1"
     connected: bool = False
 
 
@@ -144,6 +157,9 @@ class AudioEngineState(BaseModel):
     jack_hardware_ports: List[JackPortInfo] = Field(default_factory=list)
     jack_connections: List[JackConnectionInfo] = Field(default_factory=list)
 
+    # Hardware ports for UI
+    hardware_ports: List[HardwarePort] = Field(default_factory=list)
+
 
 # Command types for common operations
 class AddPluginCommand(BaseModel):
@@ -187,6 +203,14 @@ class SetTransportCommand(BaseModel):
     """Set transport state"""
 
     rolling: Optional[bool] = None
+
+
+class GetHardwarePortsCommand(BaseModel):
+    """Get hardware ports from the audio engine"""
+
+    include_audio: bool = True
+    include_midi: bool = True
+    include_cv: bool = True
     bpm: Optional[float] = None
     bpb: Optional[float] = None
 

@@ -36,7 +36,15 @@ async def broadcast_message(message: Dict[str, Any]) -> Dict[str, Any]:
     if not connection_manager:
         return {"error": "Connection manager not available"}
 
-    count = await connection_manager.broadcast_to_all(message)
+    # Handle legacy websocket messages (plain text format expected by original frontend)
+    if message.get("type") == "legacy_websocket":
+        # Send the content as plain text (original WebSocket protocol)
+        broadcast_content = message.get("content", "")
+        count = await connection_manager.broadcast_to_all(broadcast_content)
+    else:
+        # Send as JSON dict (modern format)
+        count = await connection_manager.broadcast_to_all(message)
+
     return {
         "success": True,
         "message": "Message broadcast",

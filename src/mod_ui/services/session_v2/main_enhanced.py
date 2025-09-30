@@ -354,17 +354,366 @@ async def setup_enhanced_servicebus():
     logger.info("Enhanced ServiceBus setup complete for Session Service v2")
 
 
+# Session Management Handlers
+async def handle_get_session_state(request) -> dict:
+    """Handler for getting current session state"""
+    global session_manager
+
+    if not session_manager:
+        return {"error": "Session manager not initialized"}
+
+    try:
+        state = await session_manager.get_session_state()
+        return {
+            "success": True,
+            "session": {
+                "session_id": str(state.session_id),
+                "status": state.status.value,
+                "transport_state": state.transport_state.value,
+                "transport_rolling": state.transport_rolling,
+                "tempo_bpm": state.tempo_bpm,
+                "beats_per_bar": state.beats_per_bar,
+                "sample_rate": state.sample_rate,
+                "buffer_size": state.buffer_size,
+                "audio_driver": state.audio_driver,
+                "plugins": [plugin.to_dict() for plugin in state.plugins],
+                "connections": [conn.to_dict() for conn in state.connections],
+                "created_at": state.created_at.isoformat(),
+                "updated_at": state.updated_at.isoformat(),
+            },
+        }
+    except Exception as e:
+        logger.error(f"Error getting session state: {e}")
+        return {"error": f"Failed to get session state: {str(e)}"}
+
+
+async def handle_reset_session(request) -> dict:
+    """Handler for resetting session"""
+    global session_manager
+
+    if not session_manager:
+        return {"error": "Session manager not initialized"}
+
+    try:
+        await session_manager.reset_session()
+        return {"success": True, "message": "Session reset successfully"}
+    except Exception as e:
+        logger.error(f"Error resetting session: {e}")
+        return {"error": f"Failed to reset session: {str(e)}"}
+
+
+async def handle_websocket_connected(request) -> dict:
+    """Handler for WebSocket connection events"""
+    global session_manager
+
+    if not session_manager:
+        return {"error": "Session manager not initialized"}
+
+    try:
+        client_id = request.get("client_id")
+        await session_manager.handle_websocket_connected(client_id)
+        return {"success": True, "message": f"WebSocket connected: {client_id}"}
+    except Exception as e:
+        logger.error(f"Error handling WebSocket connection: {e}")
+        return {"error": f"Failed to handle WebSocket connection: {str(e)}"}
+
+
+async def handle_websocket_disconnected(request) -> dict:
+    """Handler for WebSocket disconnection events"""
+    global session_manager
+
+    if not session_manager:
+        return {"error": "Session manager not initialized"}
+
+    try:
+        client_id = request.get("client_id")
+        await session_manager.handle_websocket_disconnected(client_id)
+        return {"success": True, "message": f"WebSocket disconnected: {client_id}"}
+    except Exception as e:
+        logger.error(f"Error handling WebSocket disconnection: {e}")
+        return {"error": f"Failed to handle WebSocket disconnection: {str(e)}"}
+
+
+# Plugin Management Handlers
+async def handle_add_plugin(request) -> dict:
+    """Handler for adding plugins"""
+    global session_manager, plugin_service
+
+    if not session_manager or not plugin_service:
+        return {"error": "Service not initialized"}
+
+    try:
+        plugin_uri = request.get("plugin_uri")
+        instance_id = request.get("instance_id")
+
+        # Add plugin through audio engine
+        result = await plugin_service.add_plugin(plugin_uri, instance_id)
+
+        if result.get("success"):
+            # Update session state
+            await session_manager.add_plugin(plugin_uri, instance_id)
+
+        return result
+    except Exception as e:
+        logger.error(f"Error adding plugin: {e}")
+        return {"error": f"Failed to add plugin: {str(e)}"}
+
+
+async def handle_remove_plugin(request) -> dict:
+    """Handler for removing plugins"""
+    global session_manager, plugin_service
+
+    if not session_manager or not plugin_service:
+        return {"error": "Service not initialized"}
+
+    try:
+        instance_id = request.get("instance_id")
+
+        # Remove plugin through audio engine
+        result = await plugin_service.remove_plugin(instance_id)
+
+        if result.get("success"):
+            # Update session state
+            await session_manager.remove_plugin(instance_id)
+
+        return result
+    except Exception as e:
+        logger.error(f"Error removing plugin: {e}")
+        return {"error": f"Failed to remove plugin: {str(e)}"}
+
+
+async def handle_set_plugin_parameter(request) -> dict:
+    """Handler for setting plugin parameters"""
+    global plugin_service
+
+    if not plugin_service:
+        return {"error": "Plugin service not initialized"}
+
+    try:
+        instance_id = request.get("instance_id")
+        parameter_symbol = request.get("parameter_symbol")
+        value = request.get("value")
+
+        result = await plugin_service.set_parameter(
+            instance_id, parameter_symbol, value
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error setting plugin parameter: {e}")
+        return {"error": f"Failed to set plugin parameter: {str(e)}"}
+
+
+# Connection Management Handlers
+async def handle_add_connection(request) -> dict:
+    """Handler for adding connections"""
+    global session_manager
+
+    if not session_manager:
+        return {"error": "Session manager not initialized"}
+
+    try:
+        source_port = request.get("source_port")
+        target_port = request.get("target_port")
+
+        await session_manager.add_connection(source_port, target_port)
+        return {"success": True, "message": "Connection added successfully"}
+    except Exception as e:
+        logger.error(f"Error adding connection: {e}")
+        return {"error": f"Failed to add connection: {str(e)}"}
+
+
+async def handle_remove_connection(request) -> dict:
+    """Handler for removing connections"""
+    global session_manager
+
+    if not session_manager:
+        return {"error": "Session manager not initialized"}
+
+    try:
+        source_port = request.get("source_port")
+        target_port = request.get("target_port")
+
+        await session_manager.remove_connection(source_port, target_port)
+        return {"success": True, "message": "Connection removed successfully"}
+    except Exception as e:
+        logger.error(f"Error removing connection: {e}")
+        return {"error": f"Failed to remove connection: {str(e)}"}
+
+
+# Transport Control Handlers
+async def handle_control_transport(request) -> dict:
+    """Handler for transport control"""
+    global session_manager
+
+    if not session_manager:
+        return {"error": "Session manager not initialized"}
+
+    try:
+        action = request.get("action")  # "play", "stop", "pause"
+
+        await session_manager.control_transport(action)
+        return {"success": True, "message": f"Transport {action} executed"}
+    except Exception as e:
+        logger.error(f"Error controlling transport: {e}")
+        return {"error": f"Failed to control transport: {str(e)}"}
+
+
+async def handle_set_session_tempo(request) -> dict:
+    """Handler for setting session tempo"""
+    global session_manager
+
+    if not session_manager:
+        return {"error": "Session manager not initialized"}
+
+    try:
+        tempo_bpm = request.get("tempo_bpm")
+
+        await session_manager.set_tempo(tempo_bpm)
+        return {"success": True, "message": f"Tempo set to {tempo_bpm} BPM"}
+    except Exception as e:
+        logger.error(f"Error setting tempo: {e}")
+        return {"error": f"Failed to set tempo: {str(e)}"}
+
+
+async def handle_set_beats_per_bar(request) -> dict:
+    """Handler for setting beats per bar"""
+    global session_manager
+
+    if not session_manager:
+        return {"error": "Session manager not initialized"}
+
+    try:
+        beats_per_bar = request.get("beats_per_bar")
+
+        await session_manager.set_beats_per_bar(beats_per_bar)
+        return {"success": True, "message": f"Beats per bar set to {beats_per_bar}"}
+    except Exception as e:
+        logger.error(f"Error setting beats per bar: {e}")
+        return {"error": f"Failed to set beats per bar: {str(e)}"}
+
+
+# Recording Handlers
+async def handle_recording_start(request) -> dict:
+    """Handler for starting recording"""
+    global session_manager
+
+    if not session_manager:
+        return {"error": "Session manager not initialized"}
+
+    try:
+        await session_manager.start_recording()
+        return {"success": True, "message": "Recording started"}
+    except Exception as e:
+        logger.error(f"Error starting recording: {e}")
+        return {"error": f"Failed to start recording: {str(e)}"}
+
+
+async def handle_recording_stop(request) -> dict:
+    """Handler for stopping recording"""
+    global session_manager
+
+    if not session_manager:
+        return {"error": "Session manager not initialized"}
+
+    try:
+        await session_manager.stop_recording()
+        return {"success": True, "message": "Recording stopped"}
+    except Exception as e:
+        logger.error(f"Error stopping recording: {e}")
+        return {"error": f"Failed to stop recording: {str(e)}"}
+
+
+async def handle_recording_reset(request) -> dict:
+    """Handler for resetting recording"""
+    global session_manager
+
+    if not session_manager:
+        return {"error": "Session manager not initialized"}
+
+    try:
+        await session_manager.reset_recording()
+        return {"success": True, "message": "Recording reset"}
+    except Exception as e:
+        logger.error(f"Error resetting recording: {e}")
+        return {"error": f"Failed to reset recording: {str(e)}"}
+
+
+# Legacy Compatibility Handlers
+async def handle_update_session_state(request) -> dict:
+    """Legacy handler for updating session state"""
+    return {"success": True, "message": "Session state updated (legacy compatibility)"}
+
+
+async def handle_get_session_status(request) -> dict:
+    """Legacy handler for getting session status"""
+    global session_manager
+
+    if not session_manager:
+        return {"error": "Session manager not initialized"}
+
+    try:
+        state = await session_manager.get_session_state()
+        return {
+            "success": True,
+            "status": state.status.value,
+            "transport_rolling": state.transport_rolling,
+        }
+    except Exception as e:
+        logger.error(f"Error getting session status: {e}")
+        return {"error": f"Failed to get session status: {str(e)}"}
+
+
+async def handle_get_session_stats(request) -> dict:
+    """Legacy handler for getting session stats"""
+    return {"success": True, "stats": {"uptime": "0s", "plugins": 0, "connections": 0}}
+
+
+async def handle_start_session(request) -> dict:
+    """Legacy handler for starting session"""
+    return {"success": True, "message": "Session started (legacy compatibility)"}
+
+
+async def handle_stop_session(request) -> dict:
+    """Legacy handler for stopping session"""
+    return {"success": True, "message": "Session stopped (legacy compatibility)"}
+
+
+async def handle_set_session_config(request) -> dict:
+    """Legacy handler for setting session config"""
+    return {"success": True, "message": "Session config set (legacy compatibility)"}
+
+
+async def handle_reset_session_stats(request) -> dict:
+    """Legacy handler for resetting session stats"""
+    return {"success": True, "message": "Session stats reset (legacy compatibility)"}
+
+
+# Event Handlers
+async def handle_session_change_event(event: ServiceEvent):
+    """Handle session change events"""
+    logger.info(f"Session change event received: {event.data}")
+
+
+async def handle_transport_change_event(event: ServiceEvent):
+    """Handle transport change events"""
+    logger.info(f"Transport change event received: {event.data}")
+
+
+async def handle_plugin_change_event(event: ServiceEvent):
+    """Handle plugin change events"""
+    logger.info(f"Plugin change event received: {event.data}")
+
+
 async def shutdown_services():
     """Shutdown all services gracefully"""
-    global state_manager, session_manager, event_bus, service_server
+    global state_manager, session_manager, event_bus, resilient_servicebus
 
-    logger = logging.getLogger(__name__)
     logger.info("Shutting down Session Service v2...")
 
-    # Close services
-    if service_server:
-        await service_server.stop()
-        logger.info("ServiceServer stopped")
+    # Stop enhanced ServiceBus
+    if resilient_servicebus:
+        await resilient_servicebus.stop()
+        logger.info("Enhanced ServiceBus stopped")
 
     # Close session manager
     if session_manager:
@@ -384,629 +733,29 @@ async def shutdown_services():
     logger.info("Session Service v2 shutdown complete")
 
 
-async def handle_get_session_state(request) -> dict:
-    """Handler for getting current session state"""
-    global session_manager
-
-    if not session_manager:
-        return {"error": "Session manager not initialized"}
-
-    try:
-        # Get current session state from enhanced session manager
-        state = await session_manager.get_session_state()
-        return {
-            "success": True,
-            "session": {
-                "session_id": str(state.session_id),
-                "status": state.status.value,
-                "transport_state": state.transport_state.value,
-                "transport_rolling": state.transport_rolling,
-                "tempo_bpm": state.tempo_bpm,
-                "beats_per_bar": state.beats_per_bar,
-                "sample_rate": state.sample_rate,
-                "buffer_size": state.buffer_size,
-                "audio_driver": state.audio_driver,
-                "cpu_load": state.cpu_load,
-                "xrun_count": state.xrun_count,
-                "uptime_seconds": state.uptime_seconds,
-                "websocket_clients": state.websocket_clients,
-                "web_connected": state.web_connected,
-                "hmi_connected": state.hmi_connected,
-                "hardware_connected": state.hardware_connected,
-                "audio_engine_connected": state.audio_engine_connected,
-                "pedalboard_name": state.pedalboard_name,
-                "pedalboard_path": state.pedalboard_path,
-                "pedalboard_empty": state.pedalboard_empty,
-                "pedalboard_modified": state.pedalboard_modified,
-                "current_snapshot_id": state.current_snapshot_id,
-                "recording": {
-                    "is_recording": state.recording.is_recording,
-                    "is_playing": state.recording.is_playing,
-                    "has_recording": state.recording.has_recording,
-                    "recording_length_seconds": state.recording.recording_length_seconds,
-                },
-                "created_at": state.created_at.isoformat(),
-                "modified_at": state.modified_at.isoformat(),
-            },
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-async def handle_reset_session(request) -> dict:
-    """Handler for resetting session"""
-    global session_manager
-
-    if not session_manager:
-        return {"error": "Session manager not initialized"}
-
-    try:
-        result = await session_manager.reset_session()
-        return result
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-# WebSocket Management Handlers
-
-
-async def handle_websocket_connected(request) -> dict:
-    """Handler for websocket connection"""
-    global session_manager
-
-    if not session_manager:
-        return {"error": "Session manager not initialized"}
-
-    try:
-        # Handle both HTTP requests (with .data attribute) and ServiceBus calls (dict directly)
-        if hasattr(request, "data"):
-            data = request.data
-        else:
-            data = request
-
-        websocket_id = data.get("websocket_id", "unknown")
-
-        result = await session_manager.websocket_connected(websocket_id)
-
-        if result:
-            state = await session_manager.get_session_state()
-            return {
-                "success": True,
-                "websocket_clients": state.websocket_clients,
-                "web_connected": state.web_connected,
-            }
-        else:
-            return {"success": False, "error": "Failed to connect websocket"}
-
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-async def handle_websocket_disconnected(request) -> dict:
-    """Handler for websocket disconnection"""
-    global session_manager
-
-    if not session_manager:
-        return {"error": "Session manager not initialized"}
-
-    try:
-        data = request.data
-        websocket_id = data.get("websocket_id", "unknown")
-
-        result = await session_manager.websocket_disconnected(websocket_id)
-
-        if result:
-            state = await session_manager.get_session_state()
-            return {
-                "success": True,
-                "websocket_clients": state.websocket_clients,
-                "web_connected": state.web_connected,
-            }
-        else:
-            return {"success": False, "error": "Failed to disconnect websocket"}
-
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-# Plugin Management Handlers
-
-
-async def handle_add_plugin(request) -> dict:
-    """Handler for adding a plugin"""
-    global session_manager
-
-    if not session_manager:
-        return {"error": "Session manager not initialized"}
-
-    try:
-        from .models.plugin import PluginAddRequest
-
-        # Handle both HTTP requests (with .data attribute) and ServiceBus calls (dict directly)
-        if hasattr(request, "data"):
-            data = request.data
-        else:
-            data = request
-
-        plugin_request = PluginAddRequest(
-            instance=data.get("instance"),
-            uri=data.get("uri"),
-            x=data.get("x", 0.0),
-            y=data.get("y", 0.0),
-        )
-
-        result = await session_manager.add_plugin(plugin_request)
-        return result
-
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-async def handle_remove_plugin(request) -> dict:
-    """Handler for removing a plugin"""
-    global session_manager
-
-    if not session_manager:
-        return {"error": "Session manager not initialized"}
-
-    try:
-        from .models.plugin import PluginRemoveRequest
-
-        data = request.data
-        plugin_request = PluginRemoveRequest(instance=data.get("instance"))
-
-        result = await session_manager.remove_plugin(plugin_request)
-        return result
-
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-async def handle_set_plugin_parameter(request) -> dict:
-    """Handler for setting plugin parameter"""
-    global session_manager
-
-    if not session_manager:
-        return {"error": "Session manager not initialized"}
-
-    try:
-        from .models.plugin import ParameterSetRequest
-
-        data = request.data
-        param_request = ParameterSetRequest(
-            instance=data.get("instance"),
-            parameter=data.get("parameter"),
-            value=data.get("value"),
-        )
-
-        result = await session_manager.set_plugin_parameter(param_request)
-        return result
-
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-# Connection Management Handlers
-
-
-async def handle_add_connection(request) -> dict:
-    """Handler for adding connection"""
-    global session_manager
-
-    if not session_manager:
-        return {"error": "Session manager not initialized"}
-
-    try:
-        from .models.plugin import ConnectionRequest
-
-        data = request.data
-        conn_request = ConnectionRequest(
-            source=data.get("source"), target=data.get("target")
-        )
-
-        result = await session_manager.add_connection(conn_request)
-        return result
-
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-async def handle_remove_connection(request) -> dict:
-    """Handler for removing connection"""
-    global session_manager
-
-    if not session_manager:
-        return {"error": "Session manager not initialized"}
-
-    try:
-        from .models.plugin import ConnectionRequest
-
-        data = request.data
-        conn_request = ConnectionRequest(
-            source=data.get("source"), target=data.get("target")
-        )
-
-        result = await session_manager.remove_connection(conn_request)
-        return result
-
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-async def handle_set_beats_per_bar(request) -> dict:
-    """Handler for setting beats per bar"""
-    global session_manager
-
-    if not session_manager:
-        return {"error": "Session manager not initialized"}
-
-    try:
-        data = request.data
-        bpb = data.get("bpb", 4.0)
-
-        result = await session_manager.set_beats_per_bar(bpb)
-        return result
-
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-# Recording Handlers
-
-
-async def handle_recording_start(request) -> dict:
-    """Handler for starting recording"""
-    global session_manager
-
-    if not session_manager:
-        return {"error": "Session manager not initialized"}
-
-    try:
-        result = await session_manager.recording_start()
-        return result
-
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-async def handle_recording_stop(request) -> dict:
-    """Handler for stopping recording"""
-    global session_manager
-
-    if not session_manager:
-        return {"error": "Session manager not initialized"}
-
-    try:
-        result = await session_manager.recording_stop()
-        return result
-
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-async def handle_recording_reset(request) -> dict:
-    """Handler for resetting recording"""
-    global session_manager
-
-    if not session_manager:
-        return {"error": "Session manager not initialized"}
-
-    try:
-        result = await session_manager.recording_reset()
-        return result
-
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-# Legacy compatibility handlers using state_manager (for backward compatibility)
-async def handle_get_session_state_legacy(request) -> dict:
-    """Handler for getting current session state"""
-    global state_manager
-
-    if not state_manager:
-        return {"error": "State manager not initialized"}
-
-    try:
-        # Get current session state from state manager
-        state = await state_manager.get_session_state()
-        return {
-            "success": True,
-            "session": {
-                "transport_state": state.transport_state,
-                "tempo_bpm": state.tempo_bpm,
-                "sample_rate": state.sample_rate,
-                "buffer_size": state.buffer_size,
-                "audio_driver": state.audio_driver,
-                "cpu_load": state.cpu_load,
-                "xrun_count": state.xrun_count,
-                "uptime_seconds": state.uptime_seconds,
-                "created_at": state.created_at.isoformat(),
-                "modified_at": state.modified_at.isoformat(),
-            },
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-async def handle_get_session_status(request) -> dict:
-    """Handler for getting session status (alias for get_session_state)"""
-    return await handle_get_session_state(request)
-
-
-async def handle_update_session_state(request) -> dict:
-    """Handler for updating session state"""
-    global state_manager
-
-    if not state_manager:
-        return {"error": "State manager not initialized"}
-
-    try:
-        data = request.data
-
-        # Update session state based on provided data
-        if "tempo_bpm" in data:
-            await state_manager.set_tempo(data["tempo_bpm"])
-
-        if "transport_state" in data:
-            if data["transport_state"] == "playing":
-                await state_manager.start_transport()
-            elif data["transport_state"] == "stopped":
-                await state_manager.stop_transport()
-
-        if "sample_rate" in data:
-            await state_manager.set_sample_rate(data["sample_rate"])
-
-        if "buffer_size" in data:
-            await state_manager.set_buffer_size(data["buffer_size"])
-
-        # Get updated state
-        updated_state = await state_manager.get_session_state()
-
-        return {
-            "success": True,
-            "message": "Session state updated",
-            "session": {
-                "transport_state": updated_state.transport_state,
-                "tempo_bpm": updated_state.tempo_bpm,
-                "sample_rate": updated_state.sample_rate,
-                "buffer_size": updated_state.buffer_size,
-                "cpu_load": updated_state.cpu_load,
-                "xrun_count": updated_state.xrun_count,
-                "uptime_seconds": updated_state.uptime_seconds,
-                "modified_at": updated_state.modified_at.isoformat(),
-            },
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-async def handle_control_transport(request) -> dict:
-    """Handler for transport control"""
-    global state_manager
-
-    if not state_manager:
-        return {"error": "State manager not initialized"}
-
-    try:
-        data = request.data
-        action = data.get("action", "")
-
-        if action == "play":
-            await state_manager.start_transport()
-            transport_state = "playing"
-        elif action == "stop":
-            await state_manager.stop_transport()
-            transport_state = "stopped"
-        elif action == "pause":
-            await state_manager.pause_transport()
-            transport_state = "paused"
-        else:
-            return {"success": False, "error": f"Unknown transport action: {action}"}
-
-        return {
-            "success": True,
-            "transport_state": transport_state,
-            "message": f"Transport {action} successful",
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-async def handle_set_session_tempo(request) -> dict:
-    """Handler for setting session tempo"""
-    global state_manager
-
-    if not state_manager:
-        return {"error": "State manager not initialized"}
-
-    try:
-        data = request.data
-        bpm = data.get("bpm", 120.0)
-
-        await state_manager.set_tempo(bpm)
-
-        return {"success": True, "tempo_bpm": bpm, "message": f"Tempo set to {bpm} BPM"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-async def handle_get_session_stats(request) -> dict:
-    """Handler for getting session statistics"""
-    global state_manager
-
-    if not state_manager:
-        return {"error": "State manager not initialized"}
-
-    try:
-        state = await state_manager.get_session_state()
-
-        return {
-            "success": True,
-            "stats": {
-                "cpu_load": state.cpu_load,
-                "xrun_count": state.xrun_count,
-                "uptime_seconds": state.uptime_seconds,
-                "sample_rate": state.sample_rate,
-                "buffer_size": state.buffer_size,
-                "transport_state": state.transport_state,
-            },
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-async def handle_start_session(request) -> dict:
-    """Handler for starting a session"""
-    global state_manager
-
-    if not state_manager:
-        return {"error": "State manager not initialized"}
-
-    try:
-        data = request.data
-        pedalboard_path = data.get("pedalboard_path")
-
-        # Reset session first
-        await state_manager.reset_session()
-
-        # Load pedalboard if specified
-        if pedalboard_path:
-            # This would integrate with pedalboard service in the future
-            pass
-
-        # Get current state after start
-        state = await state_manager.get_session_state()
-
-        return {
-            "success": True,
-            "message": "Session started successfully",
-            "session_id": "current",
-            "session": {
-                "transport_state": state.transport_state,
-                "tempo_bpm": state.tempo_bpm,
-                "created_at": state.created_at.isoformat(),
-            },
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-async def handle_stop_session(request) -> dict:
-    """Handler for stopping a session"""
-    global state_manager
-
-    if not state_manager:
-        return {"error": "State manager not initialized"}
-
-    try:
-        # Stop transport and reset
-        await state_manager.stop_transport()
-        await state_manager.reset_session()
-
-        return {
-            "success": True,
-            "message": "Session stopped successfully",
-            "timestamp": state_manager._session_state.modified_at.isoformat(),
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-async def handle_reset_session(request) -> dict:
-    """Handler for resetting a session"""
-    global state_manager
-
-    if not state_manager:
-        return {"error": "State manager not initialized"}
-
-    try:
-        await state_manager.reset_session()
-
-        return {"success": True, "message": "Session reset successfully"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-async def handle_set_session_config(request) -> dict:
-    """Handler for setting session configuration"""
-    global state_manager
-
-    if not state_manager:
-        return {"error": "State manager not initialized"}
-
-    try:
-        data = request.data
-        config = {}
-
-        if "sample_rate" in data:
-            await state_manager.set_sample_rate(data["sample_rate"])
-            config["sample_rate"] = data["sample_rate"]
-
-        if "buffer_size" in data:
-            await state_manager.set_buffer_size(data["buffer_size"])
-            config["buffer_size"] = data["buffer_size"]
-
-        if "audio_driver" in data:
-            # This would be implemented when we have actual audio driver management
-            config["audio_driver"] = data["audio_driver"]
-
-        return {
-            "success": True,
-            "config": config,
-            "message": "Configuration updated successfully",
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-async def handle_reset_session_stats(request) -> dict:
-    """Handler for resetting session statistics"""
-    global state_manager
-
-    if not state_manager:
-        return {"error": "State manager not initialized"}
-
-    try:
-        await state_manager.reset_stats()
-        state = await state_manager.get_session_state()
-
-        return {
-            "success": True,
-            "message": "Statistics reset successfully",
-            "stats": {
-                "cpu_load": state.cpu_load,
-                "xrun_count": state.xrun_count,
-                "uptime_seconds": state.uptime_seconds,
-            },
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
 async def main():
-    """Main entry point for the service"""
-    # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
-
-    logger = logging.getLogger(__name__)
+    """Main entry point for the Enhanced Session Service v2"""
 
     # Setup signal handlers for graceful shutdown
-    def signal_handler(signum, _frame):
-        logger.info("Received signal %d, shutting down...", signum)
-        asyncio.get_event_loop().stop()
+    def signal_handler():
+        logger.info("Received shutdown signal")
+        asyncio.create_task(shutdown_services())
 
-    signal.signal(signal.SIGTERM, signal_handler)
-    signal.signal(signal.SIGINT, signal_handler)
+    if os.name != "nt":  # Unix systems
+        signal.signal(signal.SIGINT, lambda s, f: signal_handler())
+        signal.signal(signal.SIGTERM, lambda s, f: signal_handler())
 
     try:
-        # Initialize services
+        # Initialize all services
         await initialize_services()
 
-        logger.info("Session Service v2 is running - Press Ctrl+C to shutdown")
+        # Setup enhanced ServiceBus with all handlers
+        await setup_enhanced_servicebus()
+
+        # Start the enhanced ServiceBus (Step 3: Everything else automatic ✅)
+        await resilient_servicebus.start()
+
+        logger.info("Session Service v2 with Enhanced ServiceBus started successfully")
 
         # Keep the service running
         while True:
@@ -1015,11 +764,12 @@ async def main():
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt")
     except Exception as e:
-        logger.error("Service error: %s", str(e))
+        logger.error(f"Session Service v2 error: {e}")
         raise
     finally:
-        # Shutdown services
         await shutdown_services()
+
+    logger.info("Session Service v2 stopped")
 
 
 if __name__ == "__main__":

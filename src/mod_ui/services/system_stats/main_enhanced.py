@@ -247,6 +247,7 @@ async def setup_enhanced_servicebus():
     logger.info("Enhanced ServiceBus setup complete for System Stats Service")
 
 
+# System Info and Stats Handlers
 async def get_system_info(request) -> Dict[str, Any]:
     """Get comprehensive system information"""
     try:
@@ -280,7 +281,7 @@ async def get_system_info(request) -> Dict[str, Any]:
         return system_info
 
     except Exception as e:
-        logging.error(f"Error getting system info: {e}")
+        logger.error(f"Error getting system info: {e}")
         # Return fallback info
         return {
             "hwname": "MOD Device",
@@ -316,7 +317,7 @@ async def get_system_stats(request) -> Dict[str, Any]:
         return stats
 
     except Exception as e:
-        logging.error(f"Error getting system stats: {e}")
+        logger.error(f"Error getting system stats: {e}")
         return {
             "cpu_load": 0.0,
             "mem_usage": 0.0,
@@ -328,6 +329,7 @@ async def get_system_stats(request) -> Dict[str, Any]:
         }
 
 
+# System utility functions (unchanged from original)
 def _get_hardware_name() -> str:
     """Get hardware name"""
     try:
@@ -395,7 +397,7 @@ def _read_cpu_load() -> float:
             # Convert load average to percentage (approximation)
             return min(load_avg * 100, 100.0)
     except Exception as e:
-        logging.warning(f"Failed to read CPU load: {e}")
+        logger.warning(f"Failed to read CPU load: {e}")
         return 0.0
 
 
@@ -419,7 +421,7 @@ def _read_memory_usage() -> float:
             return (used / total) * 100.0
         return 0.0
     except Exception as e:
-        logging.warning(f"Failed to read memory usage: {e}")
+        logger.warning(f"Failed to read memory usage: {e}")
         return 0.0
 
 
@@ -433,7 +435,7 @@ def _read_cpu_frequency() -> str:
                 return str(freq_khz * 1000)  # Convert to Hz
         return "0"
     except Exception as e:
-        logging.warning(f"Failed to read CPU frequency: {e}")
+        logger.warning(f"Failed to read CPU frequency: {e}")
         return "0"
 
 
@@ -447,7 +449,7 @@ def _read_cpu_temperature() -> str:
                 return str(temp_millicelsius)  # Keep in millicelsius
         return "0"
     except Exception as e:
-        logging.warning(f"Failed to read CPU temperature: {e}")
+        logger.warning(f"Failed to read CPU temperature: {e}")
         return "0"
 
 
@@ -458,7 +460,7 @@ def _get_uptime() -> str:
             uptime_seconds = float(f.read().strip().split()[0])
             return str(int(uptime_seconds))
     except Exception as e:
-        logging.warning(f"Failed to read uptime: {e}")
+        logger.warning(f"Failed to read uptime: {e}")
         return "0"
 
 
@@ -470,7 +472,7 @@ def _get_disk_usage() -> float:
         total, used, free = shutil.disk_usage("/")
         return (used / total) * 100.0
     except Exception as e:
-        logging.warning(f"Failed to read disk usage: {e}")
+        logger.warning(f"Failed to read disk usage: {e}")
         return 0.0
 
 
