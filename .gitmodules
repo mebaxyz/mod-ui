@@ -1,0 +1,3 @@
+[submodule "src/mod_ui/services/mod-host"]
+	path = src/mod_ui/services/mod-host
+	url = https://github.com/mebaxyz/mod-host.git
