@@ -379,8 +379,15 @@ class ZeroMQService:
                     await asyncio.sleep(0.1)
                     continue
 
-                # Receive request
-                request_data = await self.rpc_socket.recv_json()
+                # Receive request with timeout to avoid blocking indefinitely
+                try:
+                    request_data = await asyncio.wait_for(
+                        self.rpc_socket.recv_json(zmq.NOBLOCK), timeout=0.1
+                    )
+                except (asyncio.TimeoutError, zmq.Again):
+                    # No message available, continue loop
+                    await asyncio.sleep(0.01)
+                    continue
 
                 method = request_data.get("method")
                 params = request_data.get("params", {})
@@ -445,8 +452,15 @@ class ZeroMQService:
                     await asyncio.sleep(0.1)
                     continue
 
-                # Receive event
-                topic, message_data = await self.sub_socket.recv_multipart()
+                # Receive event with timeout to avoid blocking indefinitely
+                try:
+                    topic, message_data = await asyncio.wait_for(
+                        self.sub_socket.recv_multipart(zmq.NOBLOCK), timeout=0.1
+                    )
+                except (asyncio.TimeoutError, zmq.Again):
+                    # No message available, continue loop
+                    await asyncio.sleep(0.01)
+                    continue
                 event_type = topic.decode("utf-8")
                 message = json.loads(message_data.decode("utf-8"))
 

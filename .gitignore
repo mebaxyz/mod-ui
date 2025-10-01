@@ -95,3 +95,4 @@ html/pedalboards/*.png
 
 ## Keep this file tracked
 !.gitignore
+cleanup-archive/

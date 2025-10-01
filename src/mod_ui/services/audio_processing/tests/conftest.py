@@ -36,13 +36,42 @@ def mock_servicebus():
 
 @pytest_asyncio.fixture
 async def modhost_bridge():
-    """Create ModHostBridge instance for testing."""
-    # Force simulation mode for tests
-    with patch.dict(os.environ, {"SIMULATE_MODHOST": "true"}):
+    """Create ModHostBridge instance for testing.
+
+    By default tests use a simulated mod-host. To run tests against a real
+    mod-host (for integration testing), set the environment variable
+    TEST_USE_SIMULATED_MODHOST=false before running pytest. The fixture will
+    then attempt to connect to a real mod-host listening on
+    MOD_HOST_PORT (default 5555).
+    """
+    use_sim = os.getenv("TEST_USE_SIMULATED_MODHOST", "true").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+    if use_sim:
+        # Force simulation mode for tests
+        with patch.dict(os.environ, {"SIMULATE_MODHOST": "true"}):
+            bridge = ModHostBridge()
+            await bridge.start()
+            yield bridge
+            await bridge.stop()
+    else:
+        # Use a real mod-host (do not patch SIMULATE_MODHOST)
         bridge = ModHostBridge()
-        await bridge.start()
-        yield bridge
-        await bridge.stop()
+        # ensure simulate flag is False
+        bridge.simulate = False
+        started = await bridge.start()
+        if not started:
+            # If we can't start/connect to the real mod-host, skip the test run
+            # to avoid failing the whole suite. Individual tests may also skip
+            # as appropriate.
+            pytest.skip("Could not start/connect to real mod-host; skipping")
+        try:
+            yield bridge
+        finally:
+            await bridge.stop()
 
 
 @pytest_asyncio.fixture

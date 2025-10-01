@@ -218,6 +218,72 @@ async def register_service_methods():
     # Echo for tests
     service_bus.register_handler("echo", handle_echo)
 
+    # Phase 1 Critical mod-host commands
+    service_bus.register_handler("activate_plugin", handle_activate_plugin)
+    service_bus.register_handler("preload_plugin", handle_preload_plugin)
+    service_bus.register_handler("bypass_plugin", handle_bypass_plugin)
+    service_bus.register_handler("disconnect_all_ports", handle_disconnect_all_ports)
+    service_bus.register_handler("get_cpu_load", handle_get_cpu_load)
+    service_bus.register_handler("get_max_cpu_load", handle_get_max_cpu_load)
+
+    # Phase 2 Preset Management
+    service_bus.register_handler("load_preset", handle_load_preset)
+    service_bus.register_handler("save_preset", handle_save_preset)
+    service_bus.register_handler("show_presets", handle_show_presets)
+
+    # Phase 3 Monitoring
+    service_bus.register_handler("monitor_parameter", handle_monitor_parameter)
+    service_bus.register_handler("monitor_output", handle_monitor_output)
+    service_bus.register_handler("get_audio_levels", handle_get_audio_levels)
+    service_bus.register_handler("flush_parameters", handle_flush_parameters)
+
+    # Feedback Port Monitoring (New)
+    service_bus.register_handler("monitor_audio_levels", handle_monitor_audio_levels)
+    service_bus.register_handler("monitor_midi_control", handle_monitor_midi_control)
+    service_bus.register_handler("monitor_midi_program", handle_monitor_midi_program)
+
+    # Session Control Methods (Critical Missing)
+    service_bus.register_handler("reset_session", handle_reset_session)
+    service_bus.register_handler("mute_session", handle_mute_session)
+    service_bus.register_handler("unmute_session", handle_unmute_session)
+    service_bus.register_handler("get_session_state", handle_get_session_state)
+    service_bus.register_handler("initialize_session", handle_initialize_session)
+
+    # JACK Integration Methods (Critical Missing)
+    service_bus.register_handler("get_jack_ports", handle_get_jack_ports)
+    service_bus.register_handler("set_jack_buffer_size", handle_set_jack_buffer_size)
+    service_bus.register_handler("jack_port_appeared", handle_jack_port_appeared)
+    service_bus.register_handler("jack_port_deleted", handle_jack_port_deleted)
+    service_bus.register_handler(
+        "jack_buffer_size_changed", handle_jack_buffer_size_changed
+    )
+
+    # Phase 4 Patch Management
+    service_bus.register_handler("set_patch_property", handle_set_patch_property)
+    service_bus.register_handler("get_patch_property", handle_get_patch_property)
+
+    # Phase 5 Bundle Management
+    service_bus.register_handler("add_bundle", handle_add_bundle)
+    service_bus.register_handler("remove_bundle", handle_remove_bundle)
+
+    # Phase 6 MIDI Control
+    service_bus.register_handler("midi_learn_parameter", handle_midi_learn_parameter)
+    service_bus.register_handler("midi_map_parameter", handle_midi_map_parameter)
+    service_bus.register_handler("midi_unmap_parameter", handle_midi_unmap_parameter)
+
+    # Phase 7 Hardware Control
+    service_bus.register_handler("cc_map_parameter", handle_cc_map_parameter)
+    service_bus.register_handler("cc_unmap_parameter", handle_cc_unmap_parameter)
+    service_bus.register_handler("cc_value_set", handle_cc_value_set)
+    service_bus.register_handler("cv_map_parameter", handle_cv_map_parameter)
+    service_bus.register_handler("cv_unmap_parameter", handle_cv_unmap_parameter)
+
+    # Phase 8 Transport Control
+    service_bus.register_handler("set_bpm", handle_set_bpm)
+    service_bus.register_handler("set_beats_per_bar", handle_set_beats_per_bar)
+    service_bus.register_handler("set_transport", handle_set_transport)
+    service_bus.register_handler("transport_sync", handle_transport_sync)
+
     logger.info("ServiceBus methods registered")
 
 
@@ -430,6 +496,681 @@ async def handle_echo(**_kwargs) -> Dict[str, Any]:
     return {"echo": message}
 
 
+# Phase 1 Critical mod-host command handlers
+async def handle_activate_plugin(**_kwargs) -> Dict[str, Any]:
+    """Activate a plugin instance"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    instance_number = _kwargs.get("instance_number")
+    if instance_number is None:
+        raise ValueError("Missing required parameter: instance_number")
+
+    success = await plugin_manager.modhost.activate_plugin(instance_number)
+    return {"success": success, "instance_number": instance_number}
+
+
+async def handle_preload_plugin(**_kwargs) -> Dict[str, Any]:
+    """Preload a plugin to reduce instantiation time"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    lv2_uri = _kwargs.get("lv2_uri")
+    if not lv2_uri:
+        raise ValueError("Missing required parameter: lv2_uri")
+
+    success = await plugin_manager.modhost.preload_plugin(lv2_uri)
+    return {"success": success, "lv2_uri": lv2_uri}
+
+
+async def handle_bypass_plugin(**_kwargs) -> Dict[str, Any]:
+    """Bypass or enable a plugin instance"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    instance_number = _kwargs.get("instance_number")
+    if instance_number is None:
+        raise ValueError("Missing required parameter: instance_number")
+
+    bypass = _kwargs.get("bypass", True)  # Default to bypass=True
+    success = await plugin_manager.modhost.bypass_plugin(instance_number, bypass)
+
+    return {"success": success, "instance_number": instance_number, "bypassed": bypass}
+
+
+async def handle_disconnect_all_ports(**_kwargs) -> Dict[str, Any]:
+    """Disconnect all audio connections"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    success = await plugin_manager.modhost.disconnect_all_ports()
+    return {"success": success}
+
+
+async def handle_get_cpu_load(**_kwargs) -> Dict[str, Any]:
+    """Get current CPU load percentage"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    cpu_load = await plugin_manager.modhost.get_cpu_load()
+    return {"cpu_load": cpu_load, "unit": "percent"}
+
+
+async def handle_get_max_cpu_load(**_kwargs) -> Dict[str, Any]:
+    """Get maximum CPU load since last check"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    max_cpu_load = await plugin_manager.modhost.get_max_cpu_load()
+    return {"max_cpu_load": max_cpu_load, "unit": "percent"}
+
+
+# Phase 2 Preset Management handlers
+async def handle_load_preset(**_kwargs) -> Dict[str, Any]:
+    """Load a preset for a plugin instance"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    instance_number = _kwargs.get("instance_number")
+    if instance_number is None:
+        raise ValueError("Missing required parameter: instance_number")
+
+    preset_uri = _kwargs.get("preset_uri")
+    if not preset_uri:
+        raise ValueError("Missing required parameter: preset_uri")
+
+    success = await plugin_manager.modhost.load_preset(instance_number, preset_uri)
+    return {
+        "success": success,
+        "instance_number": instance_number,
+        "preset_uri": preset_uri,
+    }
+
+
+async def handle_save_preset(**_kwargs) -> Dict[str, Any]:
+    """Save current plugin state as preset"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    instance_number = _kwargs.get("instance_number")
+    if instance_number is None:
+        raise ValueError("Missing required parameter: instance_number")
+
+    preset_name = _kwargs.get("preset_name")
+    if not preset_name:
+        raise ValueError("Missing required parameter: preset_name")
+
+    directory = _kwargs.get("directory", "/tmp/presets")  # Default directory
+    filename = _kwargs.get("filename", f"{preset_name}.ttl")  # Default filename
+
+    success = await plugin_manager.modhost.save_preset(
+        instance_number, preset_name, directory, filename
+    )
+    return {
+        "success": success,
+        "instance_number": instance_number,
+        "preset_name": preset_name,
+        "directory": directory,
+        "filename": filename,
+    }
+
+
+async def handle_show_presets(**_kwargs) -> Dict[str, Any]:
+    """Show available presets for plugin"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    instance_number = _kwargs.get("instance_number")
+    if instance_number is None:
+        raise ValueError("Missing required parameter: instance_number")
+
+    presets = await plugin_manager.modhost.show_presets(instance_number)
+    return {"presets": presets, "instance_number": instance_number}
+
+
+# Phase 3 Monitoring handlers
+async def handle_monitor_parameter(**_kwargs) -> Dict[str, Any]:
+    """Monitor parameter changes with conditions"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    instance_number = _kwargs.get("instance_number")
+    if instance_number is None:
+        raise ValueError("Missing required parameter: instance_number")
+
+    param_symbol = _kwargs.get("param_symbol")
+    if not param_symbol:
+        raise ValueError("Missing required parameter: param_symbol")
+
+    condition = _kwargs.get("condition", "=")  # Default to equality
+    value = _kwargs.get("value")
+    if value is None:
+        raise ValueError("Missing required parameter: value")
+
+    success = await plugin_manager.modhost.monitor_parameter(
+        instance_number, param_symbol, condition, float(value)
+    )
+    return {
+        "success": success,
+        "instance_number": instance_number,
+        "param_symbol": param_symbol,
+        "condition": condition,
+        "value": value,
+    }
+
+
+async def handle_monitor_output(**_kwargs) -> Dict[str, Any]:
+    """Monitor audio output levels"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    output_port = _kwargs.get("output_port")
+    if not output_port:
+        raise ValueError("Missing required parameter: output_port")
+
+    enable = _kwargs.get("enable", True)  # Default to enable
+    success = await plugin_manager.modhost.monitor_output(output_port, enable)
+    return {"success": success, "output_port": output_port, "enabled": enable}
+
+
+async def handle_get_audio_levels(**_kwargs) -> Dict[str, Any]:
+    """Get current audio level meters"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    levels = await plugin_manager.modhost.get_audio_levels()
+    return {"audio_levels": levels}
+
+
+async def handle_flush_parameters(**_kwargs) -> Dict[str, Any]:
+    """Flush all parameter changes"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    success = await plugin_manager.modhost.flush_parameters()
+    return {"success": success}
+
+
+# Phase 4 Patch Management handlers
+async def handle_set_patch_property(**_kwargs) -> Dict[str, Any]:
+    """Set plugin property/patch value"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    instance_number = _kwargs.get("instance_number")
+    if instance_number is None:
+        raise ValueError("Missing required parameter: instance_number")
+
+    property_uri = _kwargs.get("property_uri")
+    if not property_uri:
+        raise ValueError("Missing required parameter: property_uri")
+
+    value = _kwargs.get("value")
+    if value is None:
+        raise ValueError("Missing required parameter: value")
+
+    success = await plugin_manager.modhost.set_patch_property(
+        instance_number, property_uri, str(value)
+    )
+    return {
+        "success": success,
+        "instance_number": instance_number,
+        "property_uri": property_uri,
+        "value": value,
+    }
+
+
+async def handle_get_patch_property(**_kwargs) -> Dict[str, Any]:
+    """Get plugin property/patch value"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    instance_number = _kwargs.get("instance_number")
+    if instance_number is None:
+        raise ValueError("Missing required parameter: instance_number")
+
+    property_uri = _kwargs.get("property_uri")
+    if not property_uri:
+        raise ValueError("Missing required parameter: property_uri")
+
+    value = await plugin_manager.modhost.get_patch_property(
+        instance_number, property_uri
+    )
+    return {
+        "value": value,
+        "instance_number": instance_number,
+        "property_uri": property_uri,
+    }
+
+
+# Phase 5 Bundle Management handlers
+async def handle_add_bundle(**_kwargs) -> Dict[str, Any]:
+    """Add plugin bundle to available plugins"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    bundle_path = _kwargs.get("bundle_path")
+    if not bundle_path:
+        raise ValueError("Missing required parameter: bundle_path")
+
+    success = await plugin_manager.modhost.add_bundle(bundle_path)
+    return {"success": success, "bundle_path": bundle_path}
+
+
+async def handle_remove_bundle(**_kwargs) -> Dict[str, Any]:
+    """Remove plugin bundle"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    bundle_path = _kwargs.get("bundle_path")
+    if not bundle_path:
+        raise ValueError("Missing required parameter: bundle_path")
+
+    success = await plugin_manager.modhost.remove_bundle(bundle_path)
+    return {"success": success, "bundle_path": bundle_path}
+
+
+# Phase 6 MIDI Control handlers
+async def handle_midi_learn_parameter(**_kwargs) -> Dict[str, Any]:
+    """Enable MIDI learning for parameter"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    instance_number = _kwargs.get("instance_number")
+    if instance_number is None:
+        raise ValueError("Missing required parameter: instance_number")
+
+    param_symbol = _kwargs.get("param_symbol")
+    if not param_symbol:
+        raise ValueError("Missing required parameter: param_symbol")
+
+    min_val = _kwargs.get("min_val", 0.0)
+    max_val = _kwargs.get("max_val", 1.0)
+
+    success = await plugin_manager.modhost.midi_learn_parameter(
+        instance_number, param_symbol, float(min_val), float(max_val)
+    )
+    return {
+        "success": success,
+        "instance_number": instance_number,
+        "param_symbol": param_symbol,
+        "min_val": min_val,
+        "max_val": max_val,
+    }
+
+
+async def handle_midi_map_parameter(**_kwargs) -> Dict[str, Any]:
+    """Map MIDI CC to parameter"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    instance_number = _kwargs.get("instance_number")
+    if instance_number is None:
+        raise ValueError("Missing required parameter: instance_number")
+
+    param_symbol = _kwargs.get("param_symbol")
+    if not param_symbol:
+        raise ValueError("Missing required parameter: param_symbol")
+
+    channel = _kwargs.get("channel")
+    if channel is None:
+        raise ValueError("Missing required parameter: channel")
+
+    cc = _kwargs.get("cc")
+    if cc is None:
+        raise ValueError("Missing required parameter: cc")
+
+    min_val = _kwargs.get("min_val", 0.0)
+    max_val = _kwargs.get("max_val", 1.0)
+
+    success = await plugin_manager.modhost.midi_map_parameter(
+        instance_number,
+        param_symbol,
+        int(channel),
+        int(cc),
+        float(min_val),
+        float(max_val),
+    )
+    return {
+        "success": success,
+        "instance_number": instance_number,
+        "param_symbol": param_symbol,
+        "channel": channel,
+        "cc": cc,
+        "min_val": min_val,
+        "max_val": max_val,
+    }
+
+
+async def handle_midi_unmap_parameter(**_kwargs) -> Dict[str, Any]:
+    """Remove MIDI mapping from parameter"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    instance_number = _kwargs.get("instance_number")
+    if instance_number is None:
+        raise ValueError("Missing required parameter: instance_number")
+
+    param_symbol = _kwargs.get("param_symbol")
+    if not param_symbol:
+        raise ValueError("Missing required parameter: param_symbol")
+
+    success = await plugin_manager.modhost.midi_unmap_parameter(
+        instance_number, param_symbol
+    )
+    return {
+        "success": success,
+        "instance_number": instance_number,
+        "param_symbol": param_symbol,
+    }
+
+
+# Phase 7 Hardware Control handlers
+async def handle_cc_map_parameter(**_kwargs) -> Dict[str, Any]:
+    """Map Control Chain actuator to parameter"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    device_id = _kwargs.get("device_id")
+    if device_id is None:
+        raise ValueError("Missing required parameter: device_id")
+
+    actuator_id = _kwargs.get("actuator_id")
+    if actuator_id is None:
+        raise ValueError("Missing required parameter: actuator_id")
+
+    instance_number = _kwargs.get("instance_number")
+    if instance_number is None:
+        raise ValueError("Missing required parameter: instance_number")
+
+    param_symbol = _kwargs.get("param_symbol")
+    if not param_symbol:
+        raise ValueError("Missing required parameter: param_symbol")
+
+    min_val = _kwargs.get("min_val", 0.0)
+    max_val = _kwargs.get("max_val", 1.0)
+
+    success = await plugin_manager.modhost.cc_map_parameter(
+        int(device_id),
+        int(actuator_id),
+        instance_number,
+        param_symbol,
+        float(min_val),
+        float(max_val),
+    )
+    return {
+        "success": success,
+        "device_id": device_id,
+        "actuator_id": actuator_id,
+        "instance_number": instance_number,
+        "param_symbol": param_symbol,
+        "min_val": min_val,
+        "max_val": max_val,
+    }
+
+
+async def handle_cc_unmap_parameter(**_kwargs) -> Dict[str, Any]:
+    """Remove Control Chain mapping"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    device_id = _kwargs.get("device_id")
+    if device_id is None:
+        raise ValueError("Missing required parameter: device_id")
+
+    actuator_id = _kwargs.get("actuator_id")
+    if actuator_id is None:
+        raise ValueError("Missing required parameter: actuator_id")
+
+    success = await plugin_manager.modhost.cc_unmap_parameter(
+        int(device_id), int(actuator_id)
+    )
+    return {"success": success, "device_id": device_id, "actuator_id": actuator_id}
+
+
+async def handle_cc_value_set(**_kwargs) -> Dict[str, Any]:
+    """Set Control Chain actuator value"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    device_id = _kwargs.get("device_id")
+    if device_id is None:
+        raise ValueError("Missing required parameter: device_id")
+
+    actuator_id = _kwargs.get("actuator_id")
+    if actuator_id is None:
+        raise ValueError("Missing required parameter: actuator_id")
+
+    value = _kwargs.get("value")
+    if value is None:
+        raise ValueError("Missing required parameter: value")
+
+    success = await plugin_manager.modhost.cc_value_set(
+        int(device_id), int(actuator_id), float(value)
+    )
+    return {
+        "success": success,
+        "device_id": device_id,
+        "actuator_id": actuator_id,
+        "value": value,
+    }
+
+
+async def handle_cv_map_parameter(**_kwargs) -> Dict[str, Any]:
+    """Map CV input to parameter"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    instance_number = _kwargs.get("instance_number")
+    if instance_number is None:
+        raise ValueError("Missing required parameter: instance_number")
+
+    param_symbol = _kwargs.get("param_symbol")
+    if not param_symbol:
+        raise ValueError("Missing required parameter: param_symbol")
+
+    min_val = _kwargs.get("min_val", 0.0)
+    max_val = _kwargs.get("max_val", 1.0)
+
+    success = await plugin_manager.modhost.cv_map_parameter(
+        instance_number, param_symbol, float(min_val), float(max_val)
+    )
+    return {
+        "success": success,
+        "instance_number": instance_number,
+        "param_symbol": param_symbol,
+        "min_val": min_val,
+        "max_val": max_val,
+    }
+
+
+async def handle_cv_unmap_parameter(**_kwargs) -> Dict[str, Any]:
+    """Remove CV mapping from parameter"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    instance_number = _kwargs.get("instance_number")
+    if instance_number is None:
+        raise ValueError("Missing required parameter: instance_number")
+
+    param_symbol = _kwargs.get("param_symbol")
+    if not param_symbol:
+        raise ValueError("Missing required parameter: param_symbol")
+
+    success = await plugin_manager.modhost.cv_unmap_parameter(
+        instance_number, param_symbol
+    )
+    return {
+        "success": success,
+        "instance_number": instance_number,
+        "param_symbol": param_symbol,
+    }
+
+
+# Phase 8 Transport Control handlers
+async def handle_set_bpm(**_kwargs) -> Dict[str, Any]:
+    """Set transport BPM"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    bpm = _kwargs.get("bpm")
+    if bpm is None:
+        raise ValueError("Missing required parameter: bpm")
+
+    success = await plugin_manager.modhost.set_bpm(float(bpm))
+    return {"success": success, "bpm": bpm}
+
+
+async def handle_set_beats_per_bar(**_kwargs) -> Dict[str, Any]:
+    """Set beats per bar"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    beats_per_bar = _kwargs.get("beats_per_bar")
+    if beats_per_bar is None:
+        raise ValueError("Missing required parameter: beats_per_bar")
+
+    success = await plugin_manager.modhost.set_beats_per_bar(int(beats_per_bar))
+    return {"success": success, "beats_per_bar": beats_per_bar}
+
+
+async def handle_set_transport(**_kwargs) -> Dict[str, Any]:
+    """Control transport state"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    rolling = _kwargs.get("rolling", False)
+    beats_per_bar = _kwargs.get("beats_per_bar", 4)
+    beat_type = _kwargs.get("beat_type", 4)
+
+    success = await plugin_manager.modhost.set_transport(
+        bool(rolling), int(beats_per_bar), int(beat_type)
+    )
+    return {
+        "success": success,
+        "rolling": rolling,
+        "beats_per_bar": beats_per_bar,
+        "beat_type": beat_type,
+    }
+
+
+async def handle_transport_sync(**_kwargs) -> Dict[str, Any]:
+    """Set transport sync mode"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    sync_mode = _kwargs.get("sync_mode", "none")
+    if not sync_mode:
+        raise ValueError("Missing required parameter: sync_mode")
+
+    success = await plugin_manager.modhost.transport_sync(str(sync_mode))
+    return {"success": success, "sync_mode": sync_mode}
+
+    return {"success": success, "midi_channel": midi_channel, "monitoring": enable}
+
+
+# Session Control handlers (Critical Missing Functionality)
+async def handle_reset_session(**_kwargs) -> Dict[str, Any]:
+    """Reset entire session state"""
+    if not session_manager:
+        raise RuntimeError("Session manager not initialized")
+
+    bank_id = _kwargs.get("bank_id")
+    return await session_manager.reset_session(bank_id)
+
+
+async def handle_mute_session(**_kwargs) -> Dict[str, Any]:
+    """Mute audio output"""
+    if not session_manager:
+        raise RuntimeError("Session manager not initialized")
+
+    return await session_manager.mute_session()
+
+
+async def handle_unmute_session(**_kwargs) -> Dict[str, Any]:
+    """Unmute audio output"""
+    if not session_manager:
+        raise RuntimeError("Session manager not initialized")
+
+    return await session_manager.unmute_session()
+
+
+async def handle_get_session_state(**_kwargs) -> Dict[str, Any]:
+    """Get comprehensive session state"""
+    if not session_manager:
+        raise RuntimeError("Session manager not initialized")
+
+    return await session_manager.get_session_state()
+
+
+async def handle_initialize_session(**_kwargs) -> Dict[str, Any]:
+    """Initialize session"""
+    if not session_manager:
+        raise RuntimeError("Session manager not initialized")
+
+    return await session_manager.initialize_session()
+
+
+# JACK Integration handlers (Critical Missing Functionality)
+async def handle_get_jack_ports(**_kwargs) -> Dict[str, Any]:
+    """Get available JACK ports"""
+    if not modhost_bridge:
+        raise RuntimeError("ModHost bridge not initialized")
+
+    ports = await modhost_bridge.get_jack_ports()
+    return {"ports": ports}
+
+
+async def handle_set_jack_buffer_size(**_kwargs) -> Dict[str, Any]:
+    """Set JACK buffer size"""
+    if not modhost_bridge:
+        raise RuntimeError("ModHost bridge not initialized")
+
+    buffer_size = _kwargs.get("buffer_size")
+    if buffer_size is None:
+        raise ValueError("Missing required parameter: buffer_size")
+
+    success = await modhost_bridge.set_buffer_size(int(buffer_size))
+    return {"success": success, "buffer_size": buffer_size}
+
+
+async def handle_jack_port_appeared(**_kwargs) -> Dict[str, Any]:
+    """Handle JACK port appearance"""
+    if not modhost_bridge:
+        raise RuntimeError("ModHost bridge not initialized")
+
+    port_name = _kwargs.get("port_name")
+    if not port_name:
+        raise ValueError("Missing required parameter: port_name")
+
+    is_output = _kwargs.get("is_output", False)
+    return await modhost_bridge.handle_port_appeared(port_name, bool(is_output))
+
+
+async def handle_jack_port_deleted(**_kwargs) -> Dict[str, Any]:
+    """Handle JACK port deletion"""
+    if not modhost_bridge:
+        raise RuntimeError("ModHost bridge not initialized")
+
+    port_name = _kwargs.get("port_name")
+    if not port_name:
+        raise ValueError("Missing required parameter: port_name")
+
+    return await modhost_bridge.handle_port_deleted(port_name)
+
+
+async def handle_jack_buffer_size_changed(**_kwargs) -> Dict[str, Any]:
+    """Handle JACK buffer size change"""
+    if not modhost_bridge:
+        raise RuntimeError("ModHost bridge not initialized")
+
+    buffer_size = _kwargs.get("buffer_size")
+    if buffer_size is None:
+        raise ValueError("Missing required parameter: buffer_size")
+
+    return await modhost_bridge.handle_buffer_size_changed(int(buffer_size))
+
+
 async def handle_list_saved_pedalboards(**_kwargs) -> Dict[str, Any]:
     from mod_ui.services.audio_processing import storage
 
@@ -487,6 +1228,52 @@ async def handle_import_pedalboard(**_kwargs) -> Dict[str, Any]:
 
     pb_id, path = res
     return {"imported_id": pb_id, "path": path}
+
+
+# Feedback Port Monitoring handlers
+async def handle_monitor_audio_levels(**_kwargs) -> Dict[str, Any]:
+    """Monitor audio levels for a JACK port (sends data to feedback port)"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    port_name = _kwargs.get("port_name")
+    if not port_name:
+        raise ValueError("Missing required parameter: port_name")
+
+    enable = _kwargs.get("enable", True)
+    success = await plugin_manager.modhost.monitor_audio_levels(port_name, enable)
+
+    return {"success": success, "port_name": port_name, "monitoring": enable}
+
+
+async def handle_monitor_midi_control(**_kwargs) -> Dict[str, Any]:
+    """Monitor MIDI control change messages (sends data to feedback port)"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    midi_channel = _kwargs.get("midi_channel")
+    if midi_channel is None:
+        raise ValueError("Missing required parameter: midi_channel")
+
+    enable = _kwargs.get("enable", True)
+    success = await plugin_manager.modhost.monitor_midi_control(midi_channel, enable)
+
+    return {"success": success, "midi_channel": midi_channel, "monitoring": enable}
+
+
+async def handle_monitor_midi_program(**_kwargs) -> Dict[str, Any]:
+    """Monitor MIDI program change messages (sends data to feedback port)"""
+    if not plugin_manager:
+        raise RuntimeError("Plugin manager not initialized")
+
+    midi_channel = _kwargs.get("midi_channel")
+    if midi_channel is None:
+        raise ValueError("Missing required parameter: midi_channel")
+
+    enable = _kwargs.get("enable", True)
+    success = await plugin_manager.modhost.monitor_midi_program(midi_channel, enable)
+
+    return {"success": success, "midi_channel": midi_channel, "monitoring": enable}
 
 
 async def main():

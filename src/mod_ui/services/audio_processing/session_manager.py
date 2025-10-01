@@ -462,6 +462,116 @@ class SessionManager:
 
         logger.debug("Cleared audio state")
 
+    # Session Control Methods
+    async def reset_session(self, bank_id: Optional[str] = None) -> Dict[str, Any]:
+        """Reset entire session state (equivalent to original host reset)"""
+        async with self._lock:
+            # Clear all audio state first
+            await self._clear_audio_state()
+
+            # Reset session state
+            self.current_pedalboard = None
+            self.connections = []
+
+            # Reset mod-host state
+            success = await self.modhost.reset_host()
+
+            if success:
+                # Publish event
+                if self.service_bus:
+                    await self.service_bus.publish_event(
+                        "session_reset",
+                        {"bank_id": bank_id, "timestamp": datetime.now().isoformat()},
+                    )
+
+                logger.info("Session reset complete")
+                return {"status": "ok", "message": "Session reset successfully"}
+            else:
+                logger.error("Failed to reset mod-host state")
+                return {"status": "error", "message": "Failed to reset mod-host state"}
+
+    async def mute_session(self) -> Dict[str, Any]:
+        """Mute audio output (disconnect from system output)"""
+        success = await self.modhost.mute_output()
+
+        if success:
+            # Publish event
+            if self.service_bus:
+                await self.service_bus.publish_event(
+                    "session_muted", {"timestamp": datetime.now().isoformat()}
+                )
+
+            logger.info("Session muted")
+            return {"status": "ok", "muted": True}
+        else:
+            logger.error("Failed to mute session")
+            return {"status": "error", "message": "Failed to mute session"}
+
+    async def unmute_session(self) -> Dict[str, Any]:
+        """Unmute audio output (reconnect to system output)"""
+        success = await self.modhost.unmute_output()
+
+        if success:
+            # Publish event
+            if self.service_bus:
+                await self.service_bus.publish_event(
+                    "session_unmuted", {"timestamp": datetime.now().isoformat()}
+                )
+
+            logger.info("Session unmuted")
+            return {"status": "ok", "muted": False}
+        else:
+            logger.error("Failed to unmute session")
+            return {"status": "error", "message": "Failed to unmute session"}
+
+    async def get_session_state(self) -> Dict[str, Any]:
+        """Get comprehensive session state information"""
+        # Get system state from mod-host
+        system_state = await self.modhost.get_system_state()
+
+        # Get session manager status
+        session_status = self.get_status()
+
+        # Combine state information
+        state = {
+            "session": session_status,
+            "system": system_state,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+        return state
+
+    async def initialize_session(self) -> Dict[str, Any]:
+        """Initialize session (equivalent to original init_host)"""
+        async with self._lock:
+            try:
+                # Reset any existing state
+                await self._clear_audio_state()
+
+                # Initialize mod-host
+                success = await self.modhost.reset_host()
+
+                if success:
+                    # Publish event
+                    if self.service_bus:
+                        await self.service_bus.publish_event(
+                            "session_initialized",
+                            {"timestamp": datetime.now().isoformat()},
+                        )
+
+                    logger.info("Session initialized successfully")
+                    return {"status": "ok", "message": "Session initialized"}
+                else:
+                    logger.error("Failed to initialize session")
+                    return {
+                        "status": "error",
+                        "message": "Failed to initialize session",
+                    }
+
+            except Exception as e:
+                logger.error("Error during session initialization: %s", e)
+                return {"status": "error", "message": f"Initialization error: {e}"}
+
     def get_status(self) -> Dict[str, Any]:
         """Get session manager status"""
         return {
