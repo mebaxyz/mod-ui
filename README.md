@@ -1,4 +1,4 @@
-## MADELINE — Madeline Audio Device Orchestrator
+## MADELINE — Mod Audio Device 
 
 MADELINE (Madeline) is a modern fork of the original "mod-audio" project. The fork focuses on:
 
