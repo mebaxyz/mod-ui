@@ -33,7 +33,7 @@ All notable changes to this project will be documented in this file.
 
 This repository is a fork of the original "mod-audio" project. The fork modernizes the architecture, migrates services toward FastAPI, and opens the platform to custom hardware integrations. The new project name and branding are introduced in this changelog and the top-level README.
 
-## 1.0.0 - 2025-10-01 — Initial fork release (MADO / Madeline)
+## 1.0.0 - 2025-10-01 — Initial fork release (MADELINE)
 
   - chore: repository forked from `mod-audio` and reorganized for modular services
   - feat: reworked API surface and migration path toward FastAPI for web services
@@ -44,7 +44,7 @@ This repository is a fork of the original "mod-audio" project. The fork moderniz
   - ci: added minimal test harness and development tasks (see README)
 
 Notes:
-  - The project is now named "MADO" (Madeline Audio Device Orchestrator). "Madeline" is a recommended human-friendly name and "Mado" is an optional short nickname.
+  - The project is now named "MADELINE" (Madeline). The short nickname `mado` (Madeline Audio Device Orchestrator) is also suggested for CLI/package usage.
 
 ---
 

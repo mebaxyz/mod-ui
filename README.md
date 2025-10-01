@@ -1,6 +1,6 @@
-## MADO — Madeline Audio Device Orchestrator
+## MADELINE — Madeline Audio Device Orchestrator
 
-MADO (Madeline Audio Device Orchestrator) is a modern fork of the original "mod-audio" project. The fork focuses on:
+MADELINE (Madeline) is a modern fork of the original "mod-audio" project. The fork focuses on:
 
 - migrating service endpoints toward FastAPI for clearer APIs and developer ergonomics,
 - opening the platform to custom hardware integrations (modular hardware bridges), and
@@ -8,12 +8,11 @@ MADO (Madeline Audio Device Orchestrator) is a modern fork of the original "mod-
 
 The codebase preserves upstream history. New work will target semantic versioning starting at 1.0.0 for the fork.
 
-Project name ideas
-- Madeline — friendly, human name; full project name option.
-- Mado — short nickname / acronym (Madeline Audio Device Orchestrator).
-- MADI — Madeline Audio Device Interface (alternate acronym).
+Branding and names
+- Madeline — friendly, human-facing product name.
+- `mado` — recommended short nickname / package/CLI name (Madeline Audio Device Orchestrator).
 
-Pick the name you prefer; the repo currently uses the `MADO / Madeline` branding.
+The rest of this README describes development setup, quickstarts and contribution flow using the `Madeline` brand and the `mado` short name for CLI/package references.
 
 Quick start (development)
 
