@@ -1,3 +1,79 @@
+## MADO — Madeline Audio Device Orchestrator
+
+MADO (Madeline Audio Device Orchestrator) is a modern fork of the original "mod-audio" project. The fork focuses on:
+
+- migrating service endpoints toward FastAPI for clearer APIs and developer ergonomics,
+- opening the platform to custom hardware integrations (modular hardware bridges), and
+- improving developer experience with a small test harness and clearer repo layout.
+
+The codebase preserves upstream history. New work will target semantic versioning starting at 1.0.0 for the fork.
+
+Project name ideas
+- Madeline — friendly, human name; full project name option.
+- Mado — short nickname / acronym (Madeline Audio Device Orchestrator).
+- MADI — Madeline Audio Device Interface (alternate acronym).
+
+Pick the name you prefer; the repo currently uses the `MADO / Madeline` branding.
+
+Quick start (development)
+
+Prerequisites
+
+- Python 3.11+ (recommended)
+- Virtual environment (venv)
+- Optional: Docker (for service composition)
+
+Local dev steps
+
+1. Create and activate a virtualenv:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+2. Install the package for editable development mode (optional):
+
+```bash
+pip install -e .
+```
+
+3. Run the local UI and services (convenience script):
+
+```bash
+./run-local.sh
+```
+
+Running tests
+
+Run the included unit tests quickly:
+
+```bash
+python -m pytest -q
+```
+
+Repository layout
+
+- `src/mod_ui/` — core services and webserver code
+- `docs/` — architecture notes and migration plans
+- `docker/` — local docker-compose files and helpers
+- `cleanup-archive/` — archived ad-hoc files (ignored by git by default)
+
+Development notes
+
+- The `feature/fastapi-migration` branch contains the active FastAPI migration work. Check service directories for READMEs that outline in-progress tasks.
+- Keep changes small and add unit tests for new features. The project has a small test harness and a `run-tests` task in the IDE tasks list.
+
+Contributing
+
+1. Create a branch off `feature/fastapi-migration` for your work.
+2. Open a PR with a clear title and description of the change and any migration impact.
+3. Keep the changelog entry concise and add docs for breaking changes.
+
+Contact
+
+If you have questions about the migration or hardware integration model, see `docs/ARCHITECTURE.md` and open an issue or PR with proposals.
 # MOD Audio System - Consolidated Architecture
 
 ## Service Overview
