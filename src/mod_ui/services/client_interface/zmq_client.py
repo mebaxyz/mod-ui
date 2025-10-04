@@ -67,36 +67,36 @@ class ZMQClient:
     async def call(self, service_name: str, method: str, timeout: Optional[float] = 5.0, **kwargs) -> Any:
         """Call a method on another service"""
         try:
-            # Create a new REQ socket for each call to avoid state issues
-            service_port = self._get_service_rpc_port(service_name)
-            req_socket = self.context.socket(zmq.REQ)
-            req_socket.connect(f"tcp://127.0.0.1:{service_port}")
+            # Get or create REQ socket for this service
+            if service_name not in self.req_sockets:
+                service_port = self._get_service_rpc_port(service_name)
+                req_socket = self.context.socket(zmq.REQ)
+                req_socket.connect(f"tcp://127.0.0.1:{service_port}")
+                self.req_sockets[service_name] = req_socket
             
-            try:
-                # Create request
-                request_data = {
-                    "method": method,
-                    "params": kwargs,
-                    "source_service": self.client_name,
-                    "request_id": str(uuid.uuid4()),
-                    "timestamp": datetime.now().isoformat(),
-                }
-                
-                # Send request and wait for response
-                await req_socket.send_json(request_data)
-                
-                if timeout is not None:
-                    response_data = await asyncio.wait_for(req_socket.recv_json(), timeout=timeout)
-                else:
-                    response_data = await req_socket.recv_json()
-                
-                if response_data.get("error"):
-                    raise RuntimeError(f"Remote service error: {response_data['error']}")
-                
-                return response_data.get("result")
-            finally:
-                # Always close the socket after use
-                req_socket.close()
+            req_socket = self.req_sockets[service_name]
+            
+            # Create request
+            request_data = {
+                "method": method,
+                "params": kwargs,
+                "source_service": self.client_name,
+                "request_id": str(uuid.uuid4()),
+                "timestamp": datetime.now().isoformat(),
+            }
+            
+            # Send request and wait for response
+            await req_socket.send_json(request_data)
+            
+            if timeout is not None:
+                response_data = await asyncio.wait_for(req_socket.recv_json(), timeout=timeout)
+            else:
+                response_data = await req_socket.recv_json()
+            
+            if response_data.get("error"):
+                raise RuntimeError(f"Remote service error: {response_data['error']}")
+            
+            return response_data.get("result")
             
         except Exception as e:
             logger.error("Failed to call %s.%s: %s", service_name, method, e)

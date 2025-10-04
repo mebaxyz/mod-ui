@@ -95,7 +95,7 @@ class PluginRequest(BaseModel):
 
 class ParameterUpdate(BaseModel):
     instance_id: str
-    parameter: str
+    port: str
     value: float
 
 
@@ -254,7 +254,7 @@ async def update_parameter(param_update: ParameterUpdate):
             "session_manager", 
             "set_parameter",
             instance_id=param_update.instance_id,
-            parameter=param_update.parameter,
+            port=param_update.port,
             value=param_update.value,
             timeout=5.0
         )
@@ -264,7 +264,7 @@ async def update_parameter(param_update: ParameterUpdate):
                 "event": "parameter_changed",
                 "data": {
                     "instance_id": param_update.instance_id,
-                    "parameter": param_update.parameter,
+                    "port": param_update.port,
                     "value": param_update.value
                 }
             })
@@ -326,44 +326,6 @@ async def get_session_health():
         return result
     except Exception as e:
         logger.error(f"Error getting session health: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/plugins/{instance_id}/parameters")
-async def get_instance_parameters(instance_id: str):
-    """Get parameters for a loaded plugin instance"""
-    if not zmq_client:
-        raise HTTPException(status_code=503, detail="ZMQ client not available")
-
-    try:
-        result = await zmq_client.call("session_manager", "get_plugin_info", instance_id=instance_id, timeout=10.0)
-        if result and result.get("success"):
-            plugin_info = result.get("plugin", {})
-            available_parameters = plugin_info.get("available_parameters", {})
-            return {"parameters": available_parameters}
-        else:
-            raise HTTPException(status_code=500, detail=result.get("error", "Failed to get plugin info"))
-    except Exception as e:
-        logger.error(f"Error getting parameters for instance {instance_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/plugins/{plugin_uri}/parameters")
-async def get_plugin_parameters(plugin_uri: str):
-    """Get plugin parameters"""
-    if not zmq_client:
-        raise HTTPException(status_code=503, detail="ZMQ client not available")
-
-    try:
-        result = await zmq_client.call("session_manager", "get_plugin_essentials", plugin_uri=plugin_uri, timeout=10.0)
-        if result and result.get("success"):
-            essentials = result.get("essentials", {})
-            parameters = essentials.get("parameters", [])
-            return {"parameters": parameters}
-        else:
-            raise HTTPException(status_code=500, detail=result.get("error", "Failed to get plugin parameters"))
-    except Exception as e:
-        logger.error(f"Error getting plugin parameters for {plugin_uri}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
